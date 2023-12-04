@@ -30,7 +30,7 @@
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3 import TD3
 import matplotlib.pyplot as plt
-import MDRA_Env2
+import multi_objective_rl.QFL_Env2 as QFL_Env2
 import numpy as np
 from collections import deque
 import os
@@ -38,7 +38,7 @@ import os
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 
 # 创建环境
-env = MDRA_Env2.UAVMDRAEnv()
+env = QFL_Env2.UAVMDRAEnv()
 env = DummyVecEnv([lambda: env])
 
 # 创建TD3模型
