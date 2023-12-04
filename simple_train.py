@@ -1,31 +1,85 @@
-from stable_baselines3.common.vec_env import DummyVecEnv
-from stable_baselines3 import TD3
+from stable_baselines3 import A2C,TD3
 import matplotlib.pyplot as plt
-import MDRA_Env2
+import QFL_Env2
 from stable_baselines3.common.results_plotter import load_results, ts2xy
+from stable_baselines3.common.monitor import Monitor
 import os
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+import numpy as np
+
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+    
+    
+log_dir = "./log_reward"
 # 创建环境
-env = MDRA_Env2.UAVMDRAEnv()
-env = DummyVecEnv([lambda: env])
-# 创建TD3模型
-model = TD3("MlpPolicy", env, verbose=0)
-# 训练模型
-model.learn(total_timesteps=3000)
+env = QFL_Env2.QFLEnv()
+env = Monitor(env, log_dir)
+# Create RL model
+#target_aciton_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.05 * np.ones(n_actions))
+model = TD3("MlpPolicy", env, verbose=100, learning_rate=1e-4) #,batch_size=500
+#model = DDPG('MlpPolicy', env, verbose=0, learning_rate=0.001)
+# Train the agent
+model.learn(total_timesteps=1000)
 
+
+def moving_average(values, window):
+    """
+    Smooth values by doing a moving average
+    :param values: (numpy array)
+    :param window: (int)
+    :return: (numpy array)
+    """
+    weights = np.repeat(1.0, window) / window
+    return np.convolve(values, weights, "valid")
+
+
+def plot_results(log_folder, title="Learning Curve"):
+    """
+    plot the results
+
+    :param log_folder: (str) the save location of the results to plot
+    :param title: (str) the title of the task to plot
+    """
+    x, y = ts2xy(load_results(log_folder), "timesteps")
+    y = moving_average(y, window=50)
+    # Truncate x
+    x = x[len(x) - len(y):]
+    print(x.shape)
+    print(y.shape)
+
+    fig = plt.figure(title)
+    plt.plot(x, y)
+    plt.xlabel("Episode")
+    plt.ylabel("Accumulated reward")
+    plt.title(title + " Smoothed")
+    plt.grid(True, linestyle='--', linewidth=0.5)
+    plt.savefig("Fig conver", dpi=600)
+    plt.show()
+    with open('reward.txt', 'w') as f:
+        for reward in y:
+            f.write(str(reward) + '\n')
+
+
+    # 计算平均值和标准差
+    # mean_value = np.mean(y)
+    # std_value = np.std(y)
+    # 输出结果
+    # print("平均值：", mean_value)
+    # print("标准差：", std_value)
+
+
+# plot_results(log_dir)
 # 通过使用 'load_results' 函数加载训练结果
-results = load_results(".")
+# results = load_results(".")
 
-# 绘制收敛图
-x, y = ts2xy(results, 'timesteps')
-plt.plot(x, y, label='TD3')
-plt.xlabel('Timesteps')
-plt.ylabel('Rewards')
-plt.title('TD3 Training Progress')
-plt.legend()
-plt.show()
+# # 绘制收敛图
+# x, y = ts2xy(results, 'timesteps')
+# plt.plot(x, y, label='TD3')
+# plt.xlabel('Timesteps')
+# plt.ylabel('Rewards')
+# plt.title('TD3 Training Progress')
+# plt.legend()
+# plt.show()
 
 
 # 训练模型
