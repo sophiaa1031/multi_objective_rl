@@ -28,20 +28,18 @@ class QFLEnv(gymnasium.Env):
         self.rsu_dis = [np.sqrt(np.power(self.travel_dis[i]-500,2)+10**2) for i in range(self.cars)]
         self.latency_itr = [0] * self.cars
         
+
+        # 动作1-prob：0到1之间的实数
+
+        # 动作2-bd*10：0到1之间的实数
+
+        # 动作3-pwr*10：0.1到1之间的实数(后期会处理成0.01到0.1)
         
-        #action1_space = spaces.Box(low=np.zeros(self.cars), high=np.ones(self.cars)*32, dtype=np.float32)
-
-        # 动作2：0到1之间的实数
-        #action2_space = spaces.Box(low=np.zeros(self.cars), high=np.ones(self.cars), dtype=np.float32)
-
-        # 动作3：0到10之间的实数
-        #action3_space = spaces.Box(low=np.zeros(self.cars), high=np.full(self.cars, 10), dtype=np.float32)
-
         # 将三个动作组合成一个元组空间
         #self.action_space = spaces.Tuple((action1_space, action2_space, action3_space))
         
-        action_low = np.concatenate([np.zeros(self.cars), np.zeros(self.cars),np.ones(self.cars)*0.1])
-        action_high = np.concatenate([np.ones(self.cars), np.ones(self.cars),np.ones(self.cars)])
+        action_low = np.concatenate([np.zeros(1), np.zeros(self.cars),np.ones(self.cars)*0.1])
+        action_high = np.concatenate([np.ones(1), np.ones(self.cars),np.ones(self.cars)])
         self.action_space = spaces.Box(low=action_low, high=action_high, dtype=np.float32)
         #self.action_space = action1*cars + action2*cars + action3*cars
         #需要强调的是，action1本质上是1-32的整数，action3是0.01-0.1的实数，我们这里都处理成0-1之间
@@ -90,17 +88,28 @@ class QFLEnv(gymnasium.Env):
         #observation change
         # print ('start step')
         # print ('show action',action)
-        action[0:self.cars] = np.round(action[0:self.cars]*31)+1
-        action[2*self.cars:3*self.cars] = action[2*self.cars:3*self.cars]*0.1
-        # print ('after action',action)
+        prob = action[0]
+        bd = action[1:self.cars+1]
+        pwr = action[self.cars+1:]*0.1
+        # print ('prob',prob)
+        # print ('bd',bd)
+        # print ('pwr',pwr)
+        quant = [0 for i in range(self.cars)]
+        for i in range(self.cars):
+            # log2(1-pw*log(prob)*1e14/4) *32 *bd * (1000-travel_dis)/vel
+            quant[i] = np.log2(1 - pwr[i]*np.log(prob)*1e8/4/np.power(self.rsu_dis[i],2))*32*bd[i]#*(1000-self.travel_dis[i])/self.vel[i]
+            # print ('np.log2(1 - pwr[i]*np.log(prob)*1e12/4/np.power(self.rsu_dis[i],2))',np.log2(1 - pwr[i]*np.log(prob)*1e12/4/np.power(self.rsu_dis[i],2)))
+            # print ('np.power(self.rsu_dis[i],2)',np.power(self.rsu_dis[i],2))
+            #print ('(1000-self.travel_dis[i])/self.vel[i]',(1000-self.travel_dis[i])/self.vel[i])
+        # print ('quant',quant)
         t_comp = [0.05] * self.cars
         rsu_temp = [0] * self.cars
         rate_temp = [0] * self.cars
         for i in range(self.cars):
             rsu_temp[i] = self.travel_dis[i]+t_comp[i]*self.vel[i]
-            self.rsu_dis[i] = np.sqrt(np.power(rsu_temp[i]-500,2)+10**2)
+            self.rsu_dis[i] = np.sqrt(np.power(rsu_temp[i]-500,2)+100)
             #rate_temp = action2 *10 * log2(1+1e7*action3/(rsu_dis^2))
-            rate_temp[i] = action[1*self.cars + i]*10*np.log2(1+1e7 * action[2*self.cars + i] * np.power(self.rsu_dis[i], -2))
+            rate_temp[i] = bd[i]*10*np.log2(1 + 1e7 * pwr[i] * np.power(self.rsu_dis[i], -2))
             if rate_temp[i] == 0:
                 rate_temp[i]+=0.001
             
@@ -109,12 +118,13 @@ class QFLEnv(gymnasium.Env):
         # print ("log2(1+1e7*action3/(rsu_dis^2)",np.log2(1+1e7 * action[2*self.cars + i] * np.power(self.rsu_dis[i], -2)))
         # print ("1e7*action3/(rsu_dis^2)",1e7 * action[2*self.cars + i] * np.power(self.rsu_dis[i], -2))
         # print ("action3",action[2*self.cars + i:])
-        self.latency_itr[0] = np.max([t_comp[i] + (action[1]+1)/32 / rate_temp[i] for i in range(self.cars)])
+        self.latency_itr[0] = np.max([t_comp[i] + (quant[i] * 1e3) / (32 * rate_temp[i]) for i in range(self.cars)])
+        print ("latency_itr",self.latency_itr[0])
         for i in range(self.cars):
             self.travel_dis[i] += self.latency_itr[0]*self.vel[i]
             
         obj1_temp = np.sum([self.rho[0]/np.power(
-            np.power(2, (action[0*self.cars + i]+1)) - 1,2) for i in range(self.cars)])
+            np.power(2, (quant[i])) - 1,2) for i in range(self.cars)])
         obj1_temp2 = self.latency_itr[0]
         
         self.obj1.append(obj1_temp)
@@ -128,12 +138,13 @@ class QFLEnv(gymnasium.Env):
         done = False
         if self.current_step >= self.done_step:
             done = True
-        reward = self.get_reward(action)
+
+        reward = self.get_reward(prob,bd,pwr)
         # print ('reward, done',reward, done,obj1_temp,obj1_temp2)
         return obs, reward, done, False, {}
     
     
-    def get_reward(self,action):
+    def get_reward(self,prob,bd,pwr):
         reward = 0
         if self.current_step >= self.done_step:
             obj1 = np.sum(self.obj1)
@@ -145,16 +156,11 @@ class QFLEnv(gymnasium.Env):
             return reward
         else:
             #不等式约束
-            if np.sum(action[2*self.cars:3*self.cars]) > 1:
+            if np.sum(bd) > 1:
                 reward -= 1
             else:
-                reward -= (1-np.sum(action[1*self.cars:2*self.cars]))
-            #等式约束
-            if np.sum(action[2*self.cars:3*self.cars]) > 1:
-                reward = - 1
-            else:
-                reward = -(1-np.sum(action[1*self.cars:2*self.cars]))
-            return 0
+                reward -= (1-np.sum(bd))
+            return reward
 
     def render(self, mode='human'):
         pass

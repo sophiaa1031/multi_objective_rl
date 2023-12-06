@@ -1,6 +1,6 @@
 from stable_baselines3 import A2C,TD3
 import matplotlib.pyplot as plt
-import QFL_Env2
+import QFL_Env3
 from stable_baselines3.common.results_plotter import load_results, ts2xy
 from stable_baselines3.common.monitor import Monitor
 import os
@@ -12,14 +12,14 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
     
 log_dir = "./log_reward"
 # 创建环境
-env = QFL_Env2.QFLEnv()
+env = QFL_Env3.QFLEnv()
 env = Monitor(env, log_dir)
 # Create RL model
 #target_aciton_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.05 * np.ones(n_actions))
 model = TD3("MlpPolicy", env, verbose=100, learning_rate=1e-4) #,batch_size=500
 #model = DDPG('MlpPolicy', env, verbose=0, learning_rate=0.001)
 # Train the agent
-model.learn(total_timesteps=1000)
+model.learn(total_timesteps=10)
 
 
 def moving_average(values, window):
