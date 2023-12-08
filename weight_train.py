@@ -91,19 +91,31 @@ def plot_results(log_folder, title="Learning Curve"):
 # plot_results(log_dir)
 # 通过使用 'load_results' 函数加载训练结果
 
-results = load_results("./log_reward_weight/")
+def plot_reward():
+    results = load_results("./log_reward_weight/")
+    # 绘制收敛图
+    x, y = ts2xy(results, 'timesteps')
+    plt.plot(x, y, label='TD3')
+    # plt.ylim(-200,0)
+    plt.xlabel('Timesteps')
+    plt.ylabel('Rewards')
+    plt.title('TD3 Training Progress')
+    plt.legend()
+    plt.show()
 
-# 绘制收敛图
-x, y = ts2xy(results, 'timesteps')
-plt.plot(x, y, label='TD3')
-# plt.ylim(-200,0)
-plt.xlabel('Timesteps')
-plt.ylabel('Rewards')
-plt.title('TD3 Training Progress')
-plt.legend()
-plt.show()
+plot_reward()
 
+def plot_time(path):
+    # 读取文本文件中的数据
+    f = open(path, 'r')
+    data = f.read().split(',')
+    plt.bar(range(len(data[:-1])), list(map(float, data[:-1])))
+    # plt.title('Data Plot')
+    plt.xlabel('Subproblem index')
+    plt.ylabel('Training time (s)')
+    plt.show()
 
+plot_time(log_time)
 # 训练模型
 # mean_rewards = []
 # #for i in range(100):  # 假设进行1000个训练步
