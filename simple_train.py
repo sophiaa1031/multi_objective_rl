@@ -1,10 +1,11 @@
-from stable_baselines3 import A2C,TD3
+from stable_baselines3 import A2C,TD3,PPO
 import matplotlib.pyplot as plt
 import QFL_Env3
 from stable_baselines3.common.results_plotter import load_results, ts2xy
 from stable_baselines3.common.monitor import Monitor
 import os
 import numpy as np
+import torch
 
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
@@ -14,13 +15,17 @@ log_dir = "./log_reward"
 # 创建环境
 env = QFL_Env3.QFLEnv()
 env = Monitor(env, log_dir)
+policy_kwargs = dict(activation_fn=torch.nn.ReLU,
+                     net_arch=dict(pi=[512, 256, 64], vf=[512, 256, 64]))
 # Create RL model
 #target_aciton_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.05 * np.ones(n_actions))
-model = TD3("MlpPolicy", env, verbose=100, learning_rate=1e-4) #,batch_size=500
+model = PPO("MlpPolicy", env, verbose=500, learning_rate=1e-4, policy_kwargs=policy_kwargs, batch_size=512) #,batch_size=500
+#model = PPO.load("ppo_saved", print_system_info=True,env=env, learning_rate=1e-4)
+
 #model = DDPG('MlpPolicy', env, verbose=0, learning_rate=0.001)
 # Train the agent
-model.learn(total_timesteps=10)
-
+model.learn(total_timesteps=500000)
+model.save('ppo_saved')
 
 def moving_average(values, window):
     """
@@ -61,25 +66,26 @@ def plot_results(log_folder, title="Learning Curve"):
 
 
     # 计算平均值和标准差
-    # mean_value = np.mean(y)
-    # std_value = np.std(y)
+    mean_value = np.mean(y)
+    std_value = np.std(y)
     # 输出结果
-    # print("平均值：", mean_value)
-    # print("标准差：", std_value)
+    print("平均值：", mean_value)
+    print("标准差：", std_value)
 
 
 # plot_results(log_dir)
 # 通过使用 'load_results' 函数加载训练结果
-# results = load_results(".")
+results = load_results(".")
 
-# # 绘制收敛图
-# x, y = ts2xy(results, 'timesteps')
-# plt.plot(x, y, label='TD3')
-# plt.xlabel('Timesteps')
-# plt.ylabel('Rewards')
-# plt.title('TD3 Training Progress')
-# plt.legend()
-# plt.show()
+# 绘制收敛图
+x, y = ts2xy(results, 'timesteps')
+plt.plot(x, y, label='TD3')
+# plt.ylim(-200,0)
+plt.xlabel('Timesteps')
+plt.ylabel('Rewards')
+plt.title('TD3 Training Progress')
+plt.legend()
+plt.show()
 
 
 # 训练模型
