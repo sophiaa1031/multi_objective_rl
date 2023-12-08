@@ -6,14 +6,21 @@ from stable_baselines3.common.monitor import Monitor
 import os
 import numpy as np
 import torch
+import time
 
+def save_result(para,csv_file_path):
+    f = open(csv_file_path, 'a')
+    f.write('{:.4f}'.format(para)+',')
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
     
 
 log_dir = "log_reward_weight/"
 # 创建环境
+log_time = 'training_time(s)'
+f = open(log_time, 'w')
 for i in np.arange(0,1.2,0.2):
+    print('Now training{:.1f}'.format(i))
     env = QFL_Env4.QFLEnv(weight_lambda=i)
     env = Monitor(env, log_dir+'lambda_'+str(i)+'_')
     policy_kwargs = dict(activation_fn=torch.nn.ReLU,
@@ -28,7 +35,11 @@ for i in np.arange(0,1.2,0.2):
 
     #model = DDPG('MlpPolicy', env, verbose=0, learning_rate=0.001)
     # Train the agent
+    start_time = time.time()
     model.learn(total_timesteps=100000)
+    end_time = time.time()
+    training_time = end_time - start_time
+    save_result(training_time,log_time)
     model.save('ppo_saved_weight')
 
 def moving_average(values, window):

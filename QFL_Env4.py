@@ -131,7 +131,7 @@ class QFLEnv(gymnasium.Env):
             #     rate_temp[i]=0.01
         if self.debug:
             print('\n')
-            print('step', self.current_step)
+            print('step{}/{}'.format(self.current_step, self.done_step))
             print('##########################')
             print('self.travel_dis', self.travel_dis)
             print("self.rsu_dis[i]", self.rsu_dis)
