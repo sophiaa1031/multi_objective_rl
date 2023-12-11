@@ -12,17 +12,31 @@ def save_result(para,csv_file_path):
     f = open(csv_file_path, 'a')
     f.write('{:.4f}'.format(para)+',')
 
+def delete_contents_of_directory(directory_path):
+    if os.path.exists(directory_path):
+        for root, dirs, files in os.walk(directory_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                os.remove(file_path)  # 删除文件
+
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
     
 
 log_dir = "log_reward_weight/"
 # 创建环境
 log_time = 'training_time(s)'
+log_pf = 'pareto_front/'
+try:
+    os.mkdir(log_pf)
+except:
+    1
 f = open(log_time, 'w')
+delete_contents_of_directory(log_dir)
+delete_contents_of_directory(log_pf)
 for i in np.arange(0,1.2,0.2):
-    print('Now training{:.1f}'.format(i))
-    env = QFL_Env4.QFLEnv(weight_lambda=i)
-    env = Monitor(env, log_dir+'lambda_'+str(i)+'_')
+    print('Now training with weight {:.1f},{:.1f}'.format(i,(1-i)))
+    env = QFL_Env4.QFLEnv(weight_lambda=i,obj_file=log_pf+"/weight_"+"{:.1f}".format(i)+'.txt')
+    env = Monitor(env, log_dir+'lambda_'+"{:.1f}".format(i)+'_')
     policy_kwargs = dict(activation_fn=torch.nn.ReLU,
                          net_arch=dict(pi=[512, 256, 64], vf=[512, 256, 64]))
     # Create RL model
@@ -41,171 +55,3 @@ for i in np.arange(0,1.2,0.2):
     training_time = end_time - start_time
     save_result(training_time,log_time)
     model.save('ppo_saved_weight')
-
-def moving_average(values, window):
-    """
-    Smooth values by doing a moving average
-    :param values: (numpy array)
-    :param window: (int)
-    :return: (numpy array)
-    """
-    weights = np.repeat(1.0, window) / window
-    return np.convolve(values, weights, "valid")
-
-
-def plot_results(log_folder, title="Learning Curve"):
-    """
-    plot the results
-
-    :param log_folder: (str) the save location of the results to plot
-    :param title: (str) the title of the task to plot
-    """
-    x, y = ts2xy(load_results(log_folder), "timesteps")
-    y = moving_average(y, window=50)
-    # Truncate x
-    x = x[len(x) - len(y):]
-    print(x.shape)
-    print(y.shape)
-
-    fig = plt.figure(title)
-    plt.plot(x, y)
-    plt.xlabel("Episode")
-    plt.ylabel("Accumulated reward")
-    plt.title(title + " Smoothed")
-    plt.grid(True, linestyle='--', linewidth=0.5)
-    plt.savefig("Fig conver", dpi=600)
-    plt.show()
-    with open('reward.txt', 'w') as f:
-        for reward in y:
-            f.write(str(reward) + '\n')
-
-
-    # 计算平均值和标准差
-    mean_value = np.mean(y)
-    std_value = np.std(y)
-    # 输出结果
-    print("平均值：", mean_value)
-    print("标准差：", std_value)
-
-
-# plot_results(log_dir)
-# 通过使用 'load_results' 函数加载训练结果
-
-def plot_reward():
-    results = load_results("./log_reward_weight/")
-    # 绘制收敛图
-    x, y = ts2xy(results, 'timesteps')
-    plt.plot(x, y, label='TD3')
-    # plt.ylim(-200,0)
-    plt.xlabel('Timesteps')
-    plt.ylabel('Rewards')
-    plt.title('TD3 Training Progress')
-    plt.legend()
-    plt.show()
-
-plot_reward()
-
-def plot_time(path):
-    # 读取文本文件中的数据
-    f = open(path, 'r')
-    data = f.read().split(',')
-    plt.bar(range(len(data[:-1])), list(map(float, data[:-1])))
-    # plt.title('Data Plot')
-    plt.xlabel('Subproblem index')
-    plt.ylabel('Training time (s)')
-    plt.show()
-
-plot_time(log_time)
-# 训练模型
-# mean_rewards = []
-# #for i in range(100):  # 假设进行1000个训练步
-# model.learn(total_timesteps=3000)  # 假设每个训练步包含1000个时间步
-#
-# # 获取每个训练步的平均奖励
-# episode_rewards = model.ep_info_buffer
-# mean_reward = np.mean([ep_info['r'] for ep_info in episode_rewards])
-# mean_rewards.append(mean_reward)
-#
-# # 绘制收敛图
-# plt.plot(mean_rewards)
-# plt.xlabel('Training Steps')
-# plt.ylabel('Mean Reward')
-# plt.title('TD3 Training Convergence')
-# plt.show()
-
-
-
-
-
-# model.learn(total_timesteps=1000)
-# # 评估模型
-# mean_reward, _ = evaluate_policy(model, env, n_eval_episodes=10)
-#
-# # 获取训练过程中的奖曲线
-# ep_rewards = [ep_info['reward'] for ep_info in model.ep_info_buffer]
-#
-# # 计算滑动平均奖励
-# window_size = 100
-# smoothed_rewards = np.convolve(ep_rewards, np.ones(window_size)/window_size, mode='valid')
-#
-# # 绘制收敛图
-# plt.plot(np.arange(len(smoothed_rewards)), smoothed_rewards)
-# plt.xlabel('Episodes')
-# plt.ylabel('Average Reward')
-# plt.title('TD3 Training')
-# plt.show()
-
-
-
-
-
-
-
-# 测试训练好的模型
-# obs = env.reset()
-# total_reward = 0.0
-# x = 0.0
-# step_reward = []
-# for i in range(8):
-#     action, _states = model.predict(obs, deterministic=True)
-#     obs, reward, done, info = env.step(action)
-#     total_reward += reward
-#     print("The reward is:", reward)
-#     x += reward
-#     step_reward.append(x)
-#     if done:
-#         break
-# print("Total reward:", total_reward)
-# print(step_reward)
-# xx = []
-# for i in range(10):
-#     xx.append(i+1)
-# plt.plot(step_reward, xx)
-# plt.show()
-
-
-# 记录奖励的变化
-# episode_rewards = []
-#
-# # 训练模型
-# total_episodes = 1000
-# for episode in range(total_episodes):
-#     obs = env.reset()
-#     episode_reward = 0
-#
-#     for step in range(8):  # 假设每个episode有100个时间步
-#         action, _ = model.predict(obs, deterministic=True)
-#         obs, reward, done, _ = env.step(action)
-#
-#         episode_reward += reward
-#         if done:
-#             break
-#
-#     episode_rewards.append(episode_reward)
-#
-# # 绘制奖励随episode的变化图
-# plt.plot(range(total_episodes), episode_rewards)
-# plt.xlabel("Episode")
-# plt.ylabel("Reward")
-# plt.title("Reward vs. Episode")
-# plt.show()

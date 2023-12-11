@@ -10,12 +10,15 @@ import random
 
 
 class QFLEnv(gymnasium.Env):
-    def __init__(self, cars=10, done_step=10, weight_lambda=1, debug=False):
+    def __init__(self, cars=10, done_step=10, weight_lambda=1, debug=False, obj_file=None):
         super(QFLEnv, self).__init__()
         self.cars = cars
         self.current_step = 0
         self.done_step = done_step  # 联邦学习全局轮数
         self.weight_lambda = weight_lambda
+        self.obj_file=obj_file
+        if self.obj_file:
+            self.f = open(self.obj_file, 'w')
         # static
         # self.pwr = [0.1] * self.cars
         self.fre = [2] * self.cars
@@ -179,7 +182,7 @@ class QFLEnv(gymnasium.Env):
 
         reward = self.get_reward(prob, bd, pwr, quant, rate_temp)
         # print ('reward, done',reward, done,obj1_temp,obj1_temp2)
-        print('reward', reward)
+        print('reward:{}, at step {}'.format(reward,self.current_step))
         return obs, reward, done, False, {}
 
     def get_reward(self, prob, bd, pwr, quant, rate_temp):
@@ -187,6 +190,8 @@ class QFLEnv(gymnasium.Env):
         if self.current_step >= self.done_step:
             obj1 = np.sum(self.obj1)
             obj2 = np.sum(self.obj2)
+            if self.obj_file:
+                self.f.write(str(obj1)+","+str(obj2)+"\n")
             print('obj1: ', obj1, ', obj2: ', obj2)
             reward -= self.weight_lambda*obj1
             reward -= (1-self.weight_lambda)*obj2

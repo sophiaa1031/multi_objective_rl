@@ -7,6 +7,7 @@ import os
 import json
 import pandas
 import numpy as np
+from plot_def import multi_reward
 import torch
 
 
@@ -75,53 +76,9 @@ def plot_results(log_folder, title="Learning Curve"):
 # plot_results(log_dir)
 # 通过使用 'load_results' 函数加载训练结果
 
-def load_results(path: str):
-    """
-    Load all Monitor logs from a given directory path matching ``*monitor.csv``
 
-    :param path: the directory path containing the log file(s)
-    :return: the logged data
-    """
-    monitor_files = get_monitor_files(path)
-    if len(monitor_files) == 0:
-        raise LoadMonitorResultsError(f"No monitor files of the form *{Monitor.EXT} found in {path}")
-    data_frames, headers = [], []
-    for file_name in monitor_files:
-        with open(file_name) as file_handler:
-            first_line = file_handler.readline()
-            assert first_line[0] == "#"
-            header = json.loads(first_line[1:])
-            data_frame = pandas.read_csv(file_handler, index_col=None)
-            headers.append(header)
-            data_frame["t"] += header["t_start"]
-            data_frame.sort_values("t", inplace=True)
-            data_frame.reset_index(inplace=True)
-        data_frames.append(data_frame)
-    for data_frame in data_frames:
-        data_frame["t"] -= min(header["t_start"] for header in headers)
-    return data_frames,monitor_files
+multi_reward()
 
-results,monitor_files = load_results("./log_reward_weight/")
-num_rows = len(results)//2
-num_cols = 2
-fig, axes = plt.subplots(num_rows, num_cols, figsize=(8, 6))
-# 绘制收敛图
-for i, df in enumerate(results):
-    row = i // num_cols
-    col = i % num_cols
-    ax = axes[row, col]
-    x, y = ts2xy(df, 'timesteps')
-    y = moving_average(y, window=100)
-    x = x[len(x) - len(y):]
-    ax.plot(x, y)  # 使用不同的标签来区分不同的DataFrame
-    ax.set_xlabel('Timesteps')
-    ax.set_ylabel('Rewards')
-    ax.set_title(monitor_files[i].split('/')[-1])
-    ax.legend()
-plt.tight_layout()
-
-# 显示子图
-plt.show()
 # x, y = ts2xy(results, 'timesteps')
 # plt.plot(x, y, label='TD3')
 # # plt.ylim(-200,0)
