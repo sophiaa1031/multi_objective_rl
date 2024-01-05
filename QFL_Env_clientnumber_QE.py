@@ -39,10 +39,8 @@ class QFLEnv(gymnasium.Env):
         # 动作2-bd*10：0.01到0.2之间的实数
         # 动作3-pwr*10：0.1到1之间的实数(后期会处理成0.01到0.1)
 
-        # action_low = np.concatenate([np.ones(1) * 0.5, np.ones(self.cars) * 0.05, np.ones(self.cars) * 0.1])
-        # action_high = np.concatenate([np.ones(1) * 0.999999, np.ones(self.cars), np.ones(self.cars)])
-        action_low = np.concatenate([np.ones(1) * 0.5, np.ones(self.cars) * 0.05])
-        action_high = np.concatenate([np.ones(1) * 0.999999, np.ones(self.cars)])
+        action_low = np.concatenate([np.ones(1) * 0.5, np.zeros(self.cars), np.ones(self.cars) * 1])
+        action_high = np.concatenate([np.ones(1) * 0.999999, np.ones(self.cars), np.ones(self.cars) * 32])
         self.action_space = spaces.Box(low=action_low, high=action_high, dtype=np.float32)
         # 需要强调的是，bandwidth是0.01到0.2之间的实数，action3是0.01-0.1的实数，我们这里处理成0-1之间
 
@@ -96,21 +94,21 @@ class QFLEnv(gymnasium.Env):
 
         # observation change
         prob = action[0]
-        bd = action[1:self.cars + 1] * 0.2
-        # pwr = action[self.cars + 1:] * 0.1
+        slct = action[1:self.cars + 1]
+        quant = action[self.cars + 1:]
 
         # 根据等式约束赋值quant
-        quant = [0 for i in range(self.cars)]
-        quant_norm = [0 for i in range(self.cars)]
+        bd = [0 for i in range(self.cars)]
+        # quant = [0 for i in range(self.cars)]
         for i in range(self.cars):
-            quant[i] = np.log2(1 - self.pwr[i] * np.log(prob) * 1e7 / np.power(self.rsu_dis[i], 2)) \
-                       * 32 * bd[i] * (1000-self.travel_dis[i])/self.vel[i]
-            if quant[i] > 32:
-                quant_norm[i] = 32
-            elif quant[i] < 1:
-                quant_norm[i] = 1
-            else:
-                quant_norm[i] = quant[i]
+            bd[i] = quant[i] * np.log2(1 - self.pwr[i] * np.log(prob) * 1e7 / np.power(self.rsu_dis[i], 2)) \
+                       * 32 * (1000-self.travel_dis[i])/self.vel[i]
+            # if quant[i] > 32:
+            #     quant[i] = 32
+            # elif quant[i] < 1:
+            #     quant[i] = 1
+            # else:
+            #     quant[i] = quant[i]
 
         # 更新state
         t_comp = 0.05  # 固定计算时间
@@ -120,7 +118,7 @@ class QFLEnv(gymnasium.Env):
             travel_dis_after_comp[i] = self.travel_dis[i] + t_comp * self.vel[i]
             self.rsu_dis[i] = np.sqrt(np.power(travel_dis_after_comp[i] - 500, 2) + 100)
             rate[i] = bd[i] * 10 * np.log2(1 + 1e7 * self.pwr[i] * np.power(self.rsu_dis[i], -2))  # action2 *10 * log2(1+1e7*action3/(rsu_dis^2))
-        self.latency_itr[0] = np.max([t_comp + quant_norm[i] / (32 * max(rate[i], 0.01)) for i in range(self.cars)])
+        self.latency_itr[0] = np.max([t_comp + quant[i] / (32 * max(rate[i], 0.01)) for i in range(self.cars)])
         for i in range(self.cars):
             self.travel_dis[i] += self.latency_itr[0] * self.vel[i]  # 加上通信时延后车辆移动距离
 
@@ -135,8 +133,9 @@ class QFLEnv(gymnasium.Env):
             print('quant', quant)
 
         # 计算两个目标
-        obj1_temp = np.sum([self.rho[0] / np.power(np.power(2, (quant_norm[i])) - 1, 2) for i in range(self.cars)])
-        obj1_temp2 = self.latency_itr[0]
+        obj1_temp = np.sum([slct[i]*self.rho[0] / np.power(np.power(2, (quant[i])) - 1, 2) for i in range(self.cars)])
+        obj1_temp2 = np.sum(slct*prob)
+        # obj1_temp2 = self.latency_itr[0]
         self.obj1.append(obj1_temp)
         self.obj2.append(obj1_temp2)
         obs = [i / 2 for i in self.fre] + [i / 30 for i in self.vel] + self.rho + [i / 500 for i in self.travel_dis] + [
@@ -170,19 +169,19 @@ class QFLEnv(gymnasium.Env):
         #     reward -= sum(max(0, 1/x - 1) for x in quant) / self.cars
 
         # 帮助收敛  rate >0.01
-        if any(x < 0.01 for x in rate):
-            reward -= sum(max(0, 0.01 - x) for x in rate) * 10
+        # if any(x < 0.01 for x in rate):
+        #     reward -= sum(max(0, 0.01 - x) for x in rate) * 10
 
         # if self.current_step >= self.done_step:
         if self.current_step >= 0:  # 总是成立
-            obj1 = 10*np.sum(self.obj1)
-            obj2 = np.sum(self.obj2)
+            obj1 = np.sum(self.obj1)
+            obj2 = np.sum(self.obj2)/10  # 调整两个目标的数量级
             reward -= self.weight_lambda*obj1
-            reward -= (1-self.weight_lambda)*obj2
+            reward = (1-self.weight_lambda)*obj2
             print('reward:{}, f1:{}, f2:{}'.format(reward, obj1, obj2))
         if self.current_step >= self.done_step:         # 在每个回合结束时执行，记录奖励值
             if self.obj_file:
-                self.f.write(str(obj1)+"\t"+str(obj2)+"\t"+str(reward)+"\t"+str(bd.tolist())+"\t"+str(quant)+"\n")
+                self.f.write(str(obj1)+"\t"+str(obj2)+"\t"+str(reward)+"\t"+str(bd)+"\t"+str(quant.tolist())+"\n")
 
         return reward
 

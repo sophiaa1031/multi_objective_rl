@@ -7,7 +7,7 @@ import os
 import json
 import pandas
 import numpy as np
-from plot_def import multi_reward
+from plot_def import plot_reward
 import torch
 
 
@@ -24,60 +24,60 @@ model = PPO.load("ppo_saved_weight", print_system_info=True, env=env, learning_r
 
     #model = DDPG('MlpPolicy', env, verbose=0, learning_rate=0.001)
     # Train the agent
-model.learn(total_timesteps=1)
+model.learn(total_timesteps=200000)
 #model.save('ppo_saved_weight')
 
-def moving_average(values, window):
-    """
-    Smooth values by doing a moving average
-    :param values: (numpy array)moving_average
-    :param window: (int)
-    :return: (numpy array)
-    """
-    weights = np.repeat(1.0, window) / window
-    return np.convolve(values, weights, "valid")
+# def moving_average(values, window):
+#     """
+#     Smooth values by doing a moving average
+#     :param values: (numpy array)moving_average
+#     :param window: (int)
+#     :return: (numpy array)
+#     """
+#     weights = np.repeat(1.0, window) / window
+#     return np.convolve(values, weights, "valid")
 
 
-def plot_results(log_folder, title="Learning Curve"):
-    """
-    plot the results
-
-    :param log_folder: (str) the save location of the results to plot
-    :param title: (str) the title of the task to plot
-    """
-    x, y = ts2xy(load_results(log_folder), "timesteps")
-    y = moving_average(y, window=50)
-    # Truncate x
-    x = x[len(x) - len(y):]
-    print(x.shape)
-    print(y.shape)
-
-    fig = plt.figure(title)
-    plt.plot(x, y)
-    plt.xlabel("Episode")
-    plt.ylabel("Accumulated reward")
-    plt.title(title + " Smoothed")
-    plt.grid(True, linestyle='--', linewidth=0.5)
-    plt.savefig("Fig conver", dpi=600)
-    plt.show()
-    with open('reward.txt', 'w') as f:
-        for reward in y:
-            f.write(str(reward) + '\n')
-
-
-    # 计算平均值和标准差
-    mean_value = np.mean(y)
-    std_value = np.std(y)
-    # 输出结果
-    print("平均值：", mean_value)
-    print("标准差：", std_value)
+# def plot_results(log_folder, title="Learning Curve"):
+#     """
+#     plot the results
+#
+#     :param log_folder: (str) the save location of the results to plot
+#     :param title: (str) the title of the task to plot
+#     """
+#     x, y = ts2xy(load_results(log_folder), "timesteps")
+#     y = moving_average(y, window=50)
+#     # Truncate x
+#     x = x[len(x) - len(y):]
+#     print(x.shape)
+#     print(y.shape)
+#
+#     fig = plt.figure(title)
+#     plt.plot(x, y)
+#     plt.xlabel("Episode")
+#     plt.ylabel("Accumulated reward")
+#     plt.title(title + " Smoothed")
+#     plt.grid(True, linestyle='--', linewidth=0.5)
+#     plt.savefig("Fig conver", dpi=600)
+#     plt.show()
+#     with open('reward.txt', 'w') as f:
+#         for reward in y:
+#             f.write(str(reward) + '\n')
+#
+#
+#     # 计算平均值和标准差
+#     mean_value = np.mean(y)
+#     std_value = np.std(y)
+#     # 输出结果
+#     print("平均值：", mean_value)
+#     print("标准差：", std_value)
 
 
 # plot_results(log_dir)
 # 通过使用 'load_results' 函数加载训练结果
 
 
-multi_reward()
+plot_reward()
 
 # x, y = ts2xy(results, 'timesteps')
 # plt.plot(x, y, label='TD3')

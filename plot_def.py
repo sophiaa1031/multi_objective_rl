@@ -5,11 +5,13 @@ import matplotlib.pyplot as plt
 from stable_baselines3.common.monitor import Monitor, get_monitor_files, LoadMonitorResultsError
 import json
 import pandas
+import math
+import ast  # 用于解析字符串中的列表
 
 log_dir = "log_reward_weight/"
-log_time = 'training_time(s)'
+log_time = 'training_time(s).txt'
 log_pf = 'pareto_front/'
-file_pf = 'plot_pf'
+file_pf = 'plot_pf.txt'
 
 
 def moving_average(values, window):
@@ -21,6 +23,14 @@ def moving_average(values, window):
     """
     weights = np.repeat(1.0, window) / window
     return np.convolve(values, weights, "valid")
+
+
+def clear_file_contents(file_path):
+    try:
+        with open(file_path, 'w') as file:
+            file.truncate(0)  # 清空文件内容
+    except Exception as e:
+        print(f"Error: {e}")
 
 
 def plot_results(log_folder, title="Learning Curve"):
@@ -64,6 +74,8 @@ def plot_reward():
     results = load_results(".")  # load_results("./log_reward_weight/")
     # 绘制收敛图
     x, y = ts2xy(results, 'timesteps')
+    y = moving_average(y, window=10)
+    x = x[len(x) - len(y):]
     plt.plot(x, y, label='TD3')
     # plt.ylim(-200,0)
     plt.xlabel('Timesteps')
@@ -84,16 +96,40 @@ def plot_time(path):
     plt.show()
 
 
-def save_pf(dir_path, path):
+def save_pf(dir_path, path): # 存入已经是收敛后的10个数中的平均数
+    clear_file_contents(path)
     file_name = os.listdir(dir_path)
-    obj_record = ''
-    for i in file_name:
+    file_name_sorted = sorted(file_name, key=str)
+    obj_records = []
+    for i in file_name_sorted:
         with open(log_pf + '/' + i, 'r') as f2:  # 打开文件
             lines = f2.readlines()  # 读取所有行
-            obj_record += lines[-1]  # 取最后一行
-    f = open(path, 'a')
-    f.write(obj_record)
+            last_10_lines = lines[-10:]  # 获取最后10行
+            avg_values = []
 
+            for line in last_10_lines:
+                parts = line.strip().split('\t')  # 拆分每行的内容
+                if len(parts) > 0:  # 确保有足够的部分来解析
+                    obj1_list = ast.literal_eval(parts[0])
+                    obj2_list = ast.literal_eval(parts[1])
+                    reward_list = ast.literal_eval(parts[2])
+                    # slct_list = ast.literal_eval(parts[3])
+                    # bd_list = ast.literal_eval(parts[4])
+                    # quant_list =ast.literal_eval(parts[5])
+                    # slct_values = [float(val) for val in slct_list]  # 转换为浮点数
+                    avg_values.append([obj1_list,obj2_list])  # 添加到平均值列表
+
+            if avg_values:
+                avg_value = [sum(item) / len(item) for item in zip(*avg_values)]
+                # avg_value = sum(avg_values) / len(avg_values)  # 计算平均值
+                obj_records.append(avg_value)  # 添加平均值到列表
+
+    f = open(path, 'a')
+    for avg_value in obj_records:
+        # f.write(f"{avg_value:.3f}\n")  # 写入平均值（保留三位小数）
+        for item in avg_value:
+            f.write("{:.3f}\t".format(item))
+        f.write("\n")
 
 def plot_pf(dir_path, path):
     save_pf(dir_path, path)
@@ -101,7 +137,9 @@ def plot_pf(dir_path, path):
     x = np.array([])
     y = np.array([])
     for line in f.readlines():
-        data = line.replace('\n', '').split(',')
+        data = line.replace('\n', '').split('\t')[:2]
+        # print (line)
+        # print(data)
         data = list(map(float, data))
         x = np.append(x, data[0])
         y = np.append(y, data[1])
@@ -111,12 +149,60 @@ def plot_pf(dir_path, path):
     x_sorted = x[sorted_index]
     y_sorted = y[sorted_index]
     # 绘制散点图
-    plt.plot(x_sorted, y_sorted)
+    plt.plot(x_sorted, y_sorted, '-o')
     # 添加轴标签和标题
     plt.xlabel('Objective 1')
     plt.ylabel('Objective 2')
     plt.title('Pareto Front')
     # 显示图形
+    plt.show()
+
+def plot_pf_original(dir_path, path):
+    save_pf(dir_path, path)
+    f = open(path, 'r')
+    x = np.array([])
+    y = np.array([])
+    for line in f.readlines():
+        data = line.replace('\n', '').split('\t')[:2]
+        # print (line)
+        # print(data)
+        data = list(map(float, data))
+        x = np.append(x, data[0])
+        y = np.append(y, data[1])
+    # 绘制散点图
+    plt.plot(x, y, '-*')
+    plt.scatter(x[0], y[0], color='red',marker='o', label='起始点')
+    # 添加轴标签和标题
+    plt.xlabel('Objective 1')
+    plt.ylabel('Objective 2')
+    plt.title('Pareto Front Original')
+    plt.show()
+
+def multi_reward():
+    results = os.listdir('pareto_front/')
+    sorted_results = sorted(results, key=str)
+    num_rows = math.ceil(len(sorted_results) / 3)
+    num_cols = 3
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=(10, 6))
+    for i, df in enumerate(sorted_results):
+        y = np.array([])
+        with open(os.path.join('pareto_front/', df), 'r') as f:
+            for line in f.readlines():
+                data = line.replace('\n', '').split('\t')[2]
+                data = float(data)
+                y = np.append(y, data)
+        x = np.arange(1, len(y)+1)
+        row = i // num_cols
+        col = i % num_cols
+        ax = axes[row, col] if num_rows > 1 else axes[col]
+        y = moving_average(y, window=100)
+        x = x[len(x) - len(y):]
+        ax.plot(x, y)  # 使用不同的标签来区分不同的DataFrame
+        ax.set_xlabel('Episode')
+        ax.set_ylabel('Rewards')
+        ax.set_title(df)
+        # ax.legend()
+    plt.tight_layout()
     plt.show()
 
 
@@ -148,21 +234,21 @@ def load_results_sorted(path: str):
     return data_frames, monitor_files_sorted
 
 
-def multi_reward():
+def multi_reward_monitor():
     # 绘制收敛图
     results, monitor_files = load_results_sorted("./log_reward_weight/")
-    num_rows = len(results) // 3
+    num_rows = math.ceil(len(results) / 3)
     num_cols = 3
     fig, axes = plt.subplots(num_rows, num_cols, figsize=(10, 6))
     for i, df in enumerate(results):
         row = i // num_cols
         col = i % num_cols
-        ax = axes[row, col]
+        ax = axes[row, col] if num_rows > 1 else axes[col]
         x, y = ts2xy(df, 'timesteps')
         y = moving_average(y, window=100)
         x = x[len(x) - len(y):]
         ax.plot(x, y)  # 使用不同的标签来区分不同的DataFrame
-        ax.set_xlabel('Timesteps')
+        ax.set_xlabel('Episode')
         ax.set_ylabel('Rewards')
         ax.set_title(monitor_files[i].split('/')[-1])
         # ax.legend()
@@ -257,7 +343,10 @@ def multi_reward():
 # plt.show()
 
 # 画那些图在这里决定
-plot_reward()  # 一个reward
-plot_time(log_time)  # 多目标的训练时间
-plot_pf(log_pf, file_pf)  # 多目标的pareto面
-multi_reward()  # 多目标的reward收敛图
+if __name__ == "__main__":
+    # plot_reward()  # 一个reward
+    # plot_time(log_time)  # 多目标的训练时间
+    # plot_pf(log_pf, file_pf)  # 多目标的pareto面
+    plot_pf_original(log_pf, file_pf)  # 多目标的pareto面
+    # multi_reward()  # 多目标的reward收敛图
+    # multi_reward_monitor()
