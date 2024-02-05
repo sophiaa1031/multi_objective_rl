@@ -4,11 +4,6 @@ import gymnasium
 import numpy as np
 from gymnasium import spaces
 
-# 配置日志记录器
-"""
-该环境中，共有8组设备，每组有10个设备，其中前3个设备产生时延敏感数据，后7个设备产生时延容忍数据
-"""
-
 
 class QFLEnv(gymnasium.Env):
     def get_obj2_min(self, cof):
