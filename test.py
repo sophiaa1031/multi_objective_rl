@@ -26,11 +26,12 @@ def plot_reward(rewards):
 # Load the trained model
 model = PPO.load('ppo_saved_weight')
 args = args_parser()
+args.baseline = 'rb'
 
 # Create the environment
 # Assuming 'QFL_Env_clientnumber_latency.QFLEnv' is your custom environment class
 # Adjust the arguments as needed for your environment
-env = QFL_Env_clientnumber_latency.QFLEnv(cars=args.num_users,done_step=args.done_step,weight_lambda=0.6,lmax=0.35,baseline = args.baseline)
+env = QFL_Env_clientnumber_latency.QFLEnv(args,weight_lambda=0.6,lmax=0.35)
 env = Monitor(env)
 
 # # Evaluate the policy
@@ -43,7 +44,7 @@ total_reward = []
 for i in range(50):
     action, _states = model.predict(obs, deterministic=True)
     # print("round{}:, mix:{.2f}, accumulated_obj2{.2f}, max{.2f},".format(i, obj2_min, accumulated_obj2, obj2_max))
-    print(i,action[:10],action[10:20])
+    print(i)
     obs, rewards, dones, info, _ = env.step(action)
     total_reward.append(rewards)
     env.render()

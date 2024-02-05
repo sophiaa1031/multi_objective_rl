@@ -48,16 +48,18 @@ delete_contents_of_directory(log_dir)
 delete_contents_of_directory(log_pf)
 
 args = args_parser()
+# debug
+args.baseline = 'rb'
+args.timesteps = 500000
 
 for i in np.arange(0.35,0.42,0.5):  # i可以是weight，velocity，lmax
     # print('Now training with weight {:.2f},{:.2f}'.format(i,(1-i)))  # weight写死是0.9_0.1
-    env = QFL_Env_clientnumber_latency.QFLEnv(cars=args.num_users,done_step=args.done_step,weight_lambda=1,
-                                              obj_file=log_pf+"/weight_"+"{:.2f}".format(i)+'.txt',lmax=0.35,
-                                              baseline = args.baseline)
+    env = QFL_Env_clientnumber_latency.QFLEnv(args,weight_lambda=0,
+                                              obj_file=log_pf+"/weight_"+"{:.2f}".format(i)+'.txt',lmax=0.35)
     monitor_path = log_dir+'lambda_'+"{:.2f}".format(i)+'_'
     env = Monitor(env, monitor_path)
     policy_kwargs = dict(activation_fn=torch.nn.ReLU,
-                         net_arch=dict(pi=[256,64,64], vf=[256,64,64]))
+                         net_arch=dict(pi=[128,64], vf=[128,64]))
     # callback = MyCallback(verbose=1)
     # Create RL model
     #target_aciton_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.05 * np.ones(n_actions))
@@ -74,7 +76,7 @@ for i in np.arange(0.35,0.42,0.5):  # i可以是weight，velocity，lmax
     #model = DDPG('MlpPolicy', env, verbose=0, learning_rate=0.001)
     # Train the agent
     start_time = time.time()
-    model.learn(total_timesteps=args.total_timesteps)
+    model.learn(total_timesteps=args.timesteps)
     end_time = time.time()
     training_time = end_time - start_time
     save_result(training_time,log_time)

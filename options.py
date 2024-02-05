@@ -7,11 +7,11 @@ import argparse
 def args_parser():
     parser = argparse.ArgumentParser()
     # PPO arguments
-    parser.add_argument('--total_timesteps', type=int, default=1000000, help="rounds of training")
+    parser.add_argument('--timesteps', type=int, default=250000, help="rounds of training")
     # parser.add_argument('--frac', type=float, default=0.1, help="the fraction of clients: C")
     # parser.add_argument('--local_bs', type=int, default=128, help="local batch size: B")
     parser.add_argument('--bs', type=int, default=512, help="test batch size")
-    parser.add_argument('--lr', type=float, default=0.0001, help="learning rate")
+    parser.add_argument('--lr', type=float, default=0.001, help="learning rate")
     # parser.add_argument('--momentum', type=float, default=0.5, help="SGD momentum (default: 0.5)")
     # parser.add_argument('--split', type=str, default='user', help="train-test split type, user or sample")
 
