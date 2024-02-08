@@ -10,6 +10,7 @@ import time
 from plot_def import plot_time, plot_pf, multi_reward,multi_reward_monitor,plot_pf_original
 from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise
 from options import args_parser
+import os
 
 def save_result(para,csv_file_path):
     f = open(csv_file_path, 'a')
@@ -49,20 +50,27 @@ delete_contents_of_directory(log_pf)
 
 args = args_parser()
 # debug
-args.baseline = 'ppo'
-print(args.baseline)
-args.timesteps = 200000
+args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
+os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+baselines = ['ppo','rb','rq']
+lr = [0.005, 0.0002]
+# bs = [64,128,256]
 
-for i in np.arange(0.35,0.42,0.5):  # i可以是weight，velocity，lmax
-    # print('Now training with weight {:.2f},{:.2f}'.format(i,(1-i)))  # weight写死是0.9_0.1
-    env = QFL_Env_clientnumber_latency.QFLEnv(args,weight_lambda=1,
-                                              obj_file=log_pf+"/weight_"+"{:.2f}".format(i)+'.txt',lmax=0.35)
-    monitor_path = log_dir+'lambda_'+"{:.2f}".format(i)+'_'
+for i in range(6):  # i可以是weight，velocity，lmax
+    j = i // 3
+    k = i % 3
+    args.baseline = baselines[j]
+    args.lr = lr[k]
+    print(args.baseline,args.lr)
+    env = QFL_Env_clientnumber_latency.QFLEnv(args,weight_lambda=0.5,
+                                              obj_file=log_pf+"/baseline_{}_lr_{}.txt".format(args.baseline,args.lr),lmax=0.35)
+    monitor_path = log_dir+"baseline_{}_lr_{}".format(args.baseline,args.lr)
     env = Monitor(env, monitor_path)
     policy_kwargs = dict(activation_fn=torch.nn.ReLU,
                          net_arch=dict(pi=[128,64], vf=[128,64]))
     if i >= 0:
-        model = PPO("MlpPolicy", env, verbose=1, learning_rate=args.lr, policy_kwargs=policy_kwargs, batch_size=args.bs, gamma=0.99) #,batch_size=500
+        model = PPO("MlpPolicy", env, verbose=1, learning_rate=args.lr, policy_kwargs=policy_kwargs,
+                    batch_size=args.bs, device=args.device, n_steps=args.n_steps) #,batch_size=500
     else:
         model = PPO.load("ppo_saved", print_system_info=True,env=env, learning_rate=1e-4)
 
@@ -77,5 +85,5 @@ for i in np.arange(0.35,0.42,0.5):  # i可以是weight，velocity，lmax
 # 画图
 # plot_time(log_time)  # 多目标的训练时间
 # plot_pf_original(log_pf, file_pf)  # 多目标的pareto面
-multi_reward(reward_path)
+# multi_reward(reward_path)
 # multi_reward_monitor()
