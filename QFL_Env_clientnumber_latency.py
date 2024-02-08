@@ -32,6 +32,8 @@ class QFLEnv(gymnasium.Env):
         self.baseline = args.baseline
         self.qe_bit = 8
         self.qe_bit_per_car = 1 / np.power(np.power(2, self.qe_bit) - 1, 2)
+        self.qe_per_car_ratio_max = np.power(np.power(2, 10) - 1, 2) / self.qe_bit_per_car
+        self.qe_per_car_ratio_min = np.power(np.power(2, 7) - 1, 2) / self.qe_bit_per_car
         # 通信+计算总的时延 t_comp+latency(b=(0.05,0.1))，越小会让obj1也越小,0.27
         self.modelsize = 8
         self.totalbandwidth = 20
@@ -52,7 +54,7 @@ class QFLEnv(gymnasium.Env):
         self.vel = [30] * self.cars
         self.qe_para = 1
         self.qe = self.cars * self.done_step * self.qe_para / np.power(np.power(2, self.qe_bit) - 1, 2)
-        self.qe_per_car = [self.qe_bit_per_car ]* self.cars
+        self.qe_per_car = [self.qe_bit_per_car] * self.cars
         self.obj1 = []
         self.obj2 = []
         self.cons = []
@@ -69,43 +71,42 @@ class QFLEnv(gymnasium.Env):
         self.cons_flag = 0
 
         if self.baseline == 'rb' or self.baseline == 'rq' or self.baseline == 'uq':
-            action_low = np.concatenate([np.zeros(self.cars)])
+            action_low = np.concatenate([-np.ones(self.cars)])
             action_high = np.concatenate([np.ones(self.cars)])
         else:
-            action_low = np.concatenate([np.zeros(self.cars), np.zeros(self.cars)])
+            action_low = np.concatenate([-np.ones(self.cars), -np.ones(self.cars)])
             action_high = np.concatenate([np.ones(self.cars), np.ones(self.cars)])
 
         self.action_space = spaces.Box(low=action_low, high=action_high, dtype=np.float32)
 
-        static_low = np.concatenate([np.zeros(1),
-                                     np.zeros(1),
-                                     np.zeros(1)])
-        static_high = np.concatenate([np.full(1, np.inf),
-                                      np.ones(1),
-                                      np.full(1, np.inf)])
+        # static_low = np.concatenate([np.zeros(1),
+        #                              np.zeros(1),
+        #                              np.zeros(1)])
+        # static_high = np.concatenate([np.full(1, np.inf),
+        #                               np.ones(1),
+        #                               np.full(1, np.inf)])
 
         # 动态变量的范围
         dynamic_low = np.concatenate([-np.ones(self.cars),
                                       -np.ones(self.cars),
-                                      np.zeros(self.cars),
+                                      -np.ones(self.cars),
                                       -np.ones(self.cars),
                                       -np.ones(1),-np.ones(1)])
         dynamic_high = np.concatenate([np.ones(self.cars),
                                        np.ones(self.cars),
-                                       np.full(self.cars, np.inf),
+                                       np.ones(self.cars),
                                        np.ones(self.cars),
                                        np.ones(1),np.ones(1)])
 
         # 定义观察空间
-        self.observation_space = spaces.Box(low=np.concatenate([static_low, dynamic_low, dynamic_low]),
-                                            high=np.concatenate([static_high, dynamic_high, dynamic_high]),
+        self.observation_space = spaces.Box(low=np.concatenate([dynamic_low, dynamic_low]),
+                                            high=np.concatenate([dynamic_high, dynamic_high]),
                                             dtype=np.float32)
         print('initial completed!')
 
     # 训练1个episode之后reset
     def reset(self, seed=0):
         # 会append的
-        print('#################reset################')
         self.obj1 = []
         self.obj2 = []
         self.cons = []
@@ -126,15 +127,15 @@ class QFLEnv(gymnasium.Env):
         # 动作离散化/加规则
         if self.baseline == 'rb':
             bd_before = np.random.rand(self.cars)
-            quant_before = action[:self.cars]
+            quant_before = action[:self.cars]/2+1/2
         elif self.baseline == 'rq':
-            bd_before = action[:self.cars]
+            bd_before = action[:self.cars]/2+1/2
             quant_before = np.random.rand(self.cars)
         elif self.baseline == 'uq':
-            bd_before = action[:self.cars]
+            bd_before = action[:self.cars]/2+1/2
         elif self.baseline == 'ppo':
-            bd_before = action[:self.cars]
-            quant_before = action[self.cars:self.cars * 2]
+            bd_before = action[:self.cars]/2+1/2
+            quant_before = action[self.cars:self.cars * 2]/2+1/2
         bd = bd_before / np.sum(bd_before) if np.sum(bd_before) > 0 else [0]*self.cars
         if self.baseline == 'uq':
             quant =  np.array([self.qe_bit] * self.cars)
@@ -217,8 +218,8 @@ class QFLEnv(gymnasium.Env):
         reward = 0
         # 调参3个权重，如果满足约束，主要优化目标
         if self.cons_flag >=5:
-            a = 0.1
-            b = 0.1
+            a = 0.01
+            b = 0.01
         else:
             a = 1
             b = 1
@@ -244,8 +245,8 @@ class QFLEnv(gymnasium.Env):
         else:
             reward += (qe_calculate/qe_current-1) * b
             self.cons_flag += 1
-        if self.current_step % 10==0:
-            print('current:{},threshold:{},constraint ratio:{},reward:{},quant:{}'.format(qe_calculate,qe_current,qe_calculate/qe_current,reward,quant))
+        # if self.current_step %50==0:
+        #     print('current:{},threshold:{},constraint ratio:{},reward:{},quant:{}'.format(qe_calculate,qe_current,qe_calculate/qe_current,reward,quant))
 
         if self.current_step == self.done_step:
             # accumulated_obj1 = np.sum(np.array(self.obj1))
@@ -259,7 +260,7 @@ class QFLEnv(gymnasium.Env):
             # qe_current = self.qe # * self.current_step / self.done_step
             # if qe_calculate > qe_current:
             #     reward -= 10
-            print('constraint ratio:{},reward:{}, quant:{}'.format(qe_calculate/qe_current,reward,quant))
+            # print('constraint ratio:{},reward:{}, quant:{}'.format(qe_calculate/qe_current,reward,quant))
             # 在每个回合结束时执行，记录奖励值
             if self.obj_file:
                 self.f.write(str(accumulated_obj1) + "\t" + str(accumulated_obj2) + "\t" + str(reward) + "\t" +
@@ -269,7 +270,7 @@ class QFLEnv(gymnasium.Env):
 
     def get_last_dynamic_obs(self):
         return ([i / (self.radius) -1 for i in self.travel_dis] + [2* (i -self.rsu_distance_min) / (self.rsu_distance_max-self.rsu_distance_min) -1 for i in self.rsu_dis]+
-                [i-self.qe_bit_per_car for i in self.qe_per_car] +[2*i-1 for i in self.slct]+
+                [2*(i/self.qe_bit_per_car-self.qe_per_car_ratio_min)/(self.qe_per_car_ratio_max-self.qe_per_car_ratio_min)-1  for i in self.qe_per_car] +[2*i-1 for i in self.slct]+
                 [2*self.latency_itr/self.latency_limit-1]+ [2*self.cons_ratio_per_round-1])
     def render(self, mode='human'):
         pass
@@ -281,10 +282,10 @@ class QFLEnv(gymnasium.Env):
         """
         观测空间
         :return:
+        [self.latency_limit]+ [(self.qe_bit-7)/(10-7)]+ [self.t_comp_mean]+
         """
-        observation = ([self.latency_limit]+ [(self.qe_bit-7)/(10-7)]+ [self.t_comp_mean]+
-                       [i / (self.radius) -1 for i in self.travel_dis] + [2*(i -self.rsu_distance_min) / (self.rsu_distance_max-self.rsu_distance_min) -1 for i in self.rsu_dis]+
-                       [i-self.qe_bit_per_car for i in self.qe_per_car]+[2*i-1 for i in self.slct]+
+        observation = ([i / (self.radius) -1 for i in self.travel_dis] + [2*(i -self.rsu_distance_min) / (self.rsu_distance_max-self.rsu_distance_min) -1 for i in self.rsu_dis]+
+                       [2*(i/self.qe_bit_per_car-self.qe_per_car_ratio_min)/(self.qe_per_car_ratio_max-self.qe_per_car_ratio_min)-1 for i in self.qe_per_car]+[2*i-1 for i in self.slct]+
                        [2*self.latency_itr/self.latency_limit-1]+ [2*self.cons_ratio_per_round-1]+
                        self.last_dynamic_obs)
         return observation
