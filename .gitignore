@@ -7,3 +7,4 @@ __pycache__/
 *.ipynb
 *.png
 venv/
+weight_train3.py
