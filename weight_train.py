@@ -45,26 +45,26 @@ try:
 except:
     1
 f = open(log_time, 'w')
-delete_contents_of_directory(log_dir)
-delete_contents_of_directory(log_pf)
+# delete_contents_of_directory(log_dir)
+# delete_contents_of_directory(log_pf)
 
 args = args_parser()
 # debug
 args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
 os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
-baselines = ['ppo','rb','rq']
-lr = [0.005, 0.0002]
+# baselines = ['ppo','rb','rq']
+# lr = [0.01, 0.0001]
 # bs = [64,128,256]
 
-for i in range(6):  # i可以是weight，velocity，lmax
-    j = i // 3
-    k = i % 3
-    args.baseline = baselines[j]
-    args.lr = lr[k]
+for i in range(1):  # i可以是weight，velocity，lmax
+    # j = i // 3
+    # k = i % 3
+    # args.baseline = baselines[j]
+    # args.lr = lr[k]
     print(args.baseline,args.lr)
     env = QFL_Env_clientnumber_latency.QFLEnv(args,weight_lambda=0.5,
                                               obj_file=log_pf+"/baseline_{}_lr_{}.txt".format(args.baseline,args.lr),lmax=0.35)
-    monitor_path = log_dir+"baseline_{}_lr_{}".format(args.baseline,args.lr)
+    monitor_path = log_dir+"{}: lr {}".format(args.baseline,args.lr)
     env = Monitor(env, monitor_path)
     policy_kwargs = dict(activation_fn=torch.nn.ReLU,
                          net_arch=dict(pi=[128,64], vf=[128,64]))

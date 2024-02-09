@@ -248,7 +248,7 @@ class QFLEnv(gymnasium.Env):
         # if self.current_step %50==0:
         #     print('current:{},threshold:{},constraint ratio:{},reward:{},quant:{}'.format(qe_calculate,qe_current,qe_calculate/qe_current,reward,quant))
 
-        if self.current_step == self.done_step:
+        # if self.current_step == self.done_step:
             # accumulated_obj1 = np.sum(np.array(self.obj1))
             # accumulated_obj2 = np.sum(np.array(self.obj2))
             # obj1 = (accumulated_obj1 - obj1_min) / (obj1_max - obj1_min) # normlize
@@ -262,10 +262,10 @@ class QFLEnv(gymnasium.Env):
             #     reward -= 10
             # print('constraint ratio:{},reward:{}, quant:{}'.format(qe_calculate/qe_current,reward,quant))
             # 在每个回合结束时执行，记录奖励值
-            if self.obj_file:
-                self.f.write(str(accumulated_obj1) + "\t" + str(accumulated_obj2) + "\t" + str(reward) + "\t" +
-                             str(obj1) + "\t" + str(obj2) +
-                             "\t" + str(self.slct) + "\t" + str(bd.tolist()) + "\t" + str(quant.tolist()) + "\n")
+            # if self.obj_file:
+            #     self.f.write(str(accumulated_obj1) + "\t" + str(accumulated_obj2) + "\t" + str(reward) + "\t" +
+            #                  str(obj1) + "\t" + str(obj2) +
+            #                  "\t" + str(self.slct) + "\t" + str(bd.tolist()) + "\t" + str(quant.tolist()) + "\n")
         return reward, done
 
     def get_last_dynamic_obs(self):

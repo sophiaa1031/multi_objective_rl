@@ -438,22 +438,58 @@ def plot_obj_FLround(array1, array2, array3):
     # 显示图表
     plt.show()
 
+# 实验图2，3
 def multi_reward_monitor_inonefigure():
-    path = "./paper2/reward_nohup/monitor"
-    results, monitor_files = load_results_sorted(path) # ./paper2/reward/monitor log_reward_weight paper2/reward_nohup/monitor
+    path = "./paper2/reward_nohup/lr/monitor"
+    results, monitor_files = load_results_sorted(path) # ./paper2/reward/monitor log_reward_weight paper2/reward_nohup/monitor paper2/reward_nohup/lr/monitor
     fig, ax = plt.subplots(figsize=(8, 6))
     for i, df in enumerate(results):
         x, y = ts2xy(df, 'timesteps')
-        y = moving_average(y, window=40)
+        y = moving_average(y, window=100)
         x = x[len(x) - len(y):]/50
-        ax.plot(x, y, label=monitor_files[i].split('/')[-1].split(".")[0])  # 使用文件名作为标签
-    ax.set_xlabel('Episode', fontsize=14)
-    ax.set_ylabel('Reward', fontsize=14)
-    ax.legend(loc='lower left', bbox_to_anchor=(0.15,0.02), shadow=True, ncol=3, fontsize=12)
+        ax.plot(x, y, label=monitor_files[i].split('/')[-1].split(".monitor")[0])  # 使用文件名作为标签 split(".")[0]
+    ax.set_xlabel('Episode', fontsize=16)
+    ax.set_ylabel('Reward', fontsize=16)
+    ax.tick_params(axis='x', labelsize=12)
+    ax.tick_params(axis='y', labelsize=12)
+    ax.legend(loc='lower left', bbox_to_anchor=(0.092,0.01), shadow=True, ncol=3, fontsize=11) #0.092,0.01 0.15,0.01
     plt.subplots_adjust(bottom=0.25)
     plt.tight_layout()
     plt.grid(True)
-    plt.savefig("./paper2/fig/expr2", dpi=600)
+    plt.savefig("./paper2/fig/expr1", dpi=600)
+    plt.show()
+
+def multi_reward_optimal():
+    folder_path = "./paper2/reward_nohup/overall/monitor/"
+    baselines = ['ppo','rb','rq']
+    color=['blue','Orange','Green']
+    legend = ['DRL-VQFL',"RBA",'RQA']
+    fig, ax = plt.subplots(figsize=(8, 6))
+    for i in range(3):
+        path = folder_path+str(baselines[i])+'/'
+        results, monitor_files = load_results_sorted(path) # ./paper2/reward/monitor log_reward_weight paper2/reward_nohup/monitor paper2/reward_nohup/lr/monitor
+        all_rewards = []
+        for j, df in enumerate(results):
+            x, y = ts2xy(df, 'timesteps')
+            # x = x / 50
+            y = moving_average(y, window=20)
+            x = x[len(x) - len(y):]/50
+            all_rewards.append(y)
+            mean_rewards = np.mean(all_rewards, axis=0)
+            std_dev = np.std(all_rewards, axis=0)
+            upper_bound = mean_rewards + std_dev
+            lower_bound = mean_rewards - std_dev
+        ax.plot(x, mean_rewards, label=legend[i], color=color[i])  # 使用文件名作为标签 split(".")[0]
+        plt.fill_between(x, upper_bound, lower_bound, color=color[i], alpha=0.3)
+    ax.set_xlabel('Episode', fontsize=16)
+    ax.set_ylabel('Reward', fontsize=16)
+    ax.tick_params(axis='x', labelsize=12)
+    ax.tick_params(axis='y', labelsize=12)
+    ax.legend(loc='lower left', bbox_to_anchor=(0.7,0.01), shadow=True, ncol=1, fontsize=14) #0.085,0.01 0.1,0.01
+    plt.subplots_adjust(bottom=0.25)
+    plt.tight_layout()
+    plt.grid(True)
+    # plt.savefig("./paper2/fig/expr3", dpi=600)
     plt.show()
 
 
@@ -464,7 +500,7 @@ if __name__ == "__main__":
     # plot_pf(log_pf, file_pf)  # 多目标的pareto面
     # plot_pf_original(log_pf, file_pf)  # 多目标的pareto面
     # multi_reward(reward_path)  # 多目标的reward收敛图
-    multi_reward_monitor() # 多目标的reward封装代码收敛图
+    # multi_reward_monitor() # 多目标的reward封装代码收敛图
 
     # plot_reward_diff_setting()
 
@@ -485,3 +521,4 @@ if __name__ == "__main__":
 
     #实验画图
     # multi_reward_monitor_inonefigure()
+    multi_reward_optimal()
