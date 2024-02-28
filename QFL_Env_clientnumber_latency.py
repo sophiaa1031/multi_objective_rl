@@ -17,20 +17,20 @@ class QFLEnv(gymnasium.Env):
             if cof != 0.1:
                 obj2_min_temp[i] = self.qe_bit * self.modelsize / (32 * rate_max[i]) + self.t_comp_mean
             else:
-                obj2_min_temp[i] = self.latency_limit
+                obj2_min_temp[i] = self.obj2_max
             d_max[i + 1] = d_max[i] + obj2_min_temp[i] * self.vel[0]
         return obj2_min_temp
 
-    def __init__(self, args, weight_lambda=0.5, debug=False, obj_file=None,
-                 lmax=0.35):  # done_step需要设置成2的次方，这样才能保证total_timesteps是他的整数倍
+    def __init__(self, args, weight_lambda=0.5, debug=False, obj_file=None):  # done_step需要设置成2的次方，这样才能保证total_timesteps是他的整数倍
         super(QFLEnv, self).__init__()
+        self.timesteps = args.timesteps
         self.current_step = 0
         self.cars = args.num_users
         self.done_step = args.done_step  # 联邦学习全局轮数
         self.weight_lambda = weight_lambda
         self.obj_file = obj_file
         self.baseline = args.baseline
-        self.qe_bit = 8
+        self.qe_bit = args.qe_bit
         self.qe_bit_per_car = 1 / np.power(np.power(2, self.qe_bit) - 1, 2)
         self.qe_per_car_ratio_max = np.power(np.power(2, 10) - 1, 2) / self.qe_bit_per_car
         self.qe_per_car_ratio_min = np.power(np.power(2, 7) - 1, 2) / self.qe_bit_per_car
@@ -46,7 +46,7 @@ class QFLEnv(gymnasium.Env):
         self.t_comp_mean = (self.t_comp_max + self.t_comp_min) / 2
         self.t_comp = [random.uniform(self.t_comp_min, self.t_comp_max) for _ in range(self.cars)]
         # self.t_comp = [self.t_comp_mean] * self.cars
-        self.latency_limit = lmax + self.t_comp_mean
+        self.latency_limit = args.lmax + self.t_comp_mean
         if self.obj_file:
             self.f = open(self.obj_file, 'w')
         # static 环境
@@ -59,8 +59,8 @@ class QFLEnv(gymnasium.Env):
         self.obj2 = []
         self.cons = []
         self.debug = debug
+        self.obj2_max = 0.6 #min(self.qe_bit * self.modelsize *self.cars/ (32 * self.totalbandwidth * np.log2(1 + 1e7 * self.pwr[0] /np.power(self.radius, 2) + self.rsu_distance_min**2)) + self.t_comp_max, self.latency_limit)
         self.obj2_min = self.get_obj2_min(1)
-        self.obj2_max = self.get_obj2_min(0.1)
         # dynamic 环境
         self.travel_dis = [random.random() * 100 for i in range(self.cars)]  # 每个人起始位置不一样, [0] * self.cars  # 每个人都在位置为0的地方开始
         self.rsu_dis = [0] * self.cars
@@ -69,6 +69,7 @@ class QFLEnv(gymnasium.Env):
         self.cons_ratio_per_round = 1
         self.cons_ratio_total = 1
         self.cons_flag = 0
+        self.current_episode = 0  # 初始化时间步数为0
 
         if self.baseline == 'rb' or self.baseline == 'rq' or self.baseline == 'uq':
             action_low = np.concatenate([-np.ones(self.cars)])
@@ -117,11 +118,13 @@ class QFLEnv(gymnasium.Env):
         self.rsu_dis =[0] * self.cars
         self.latency_itr = 0
         self.slct = [1] * self.cars
+        self.current_episode += 1
         self.last_dynamic_obs = self.get_last_dynamic_obs()
         initial_observation = self._get_obs()
         return np.array(initial_observation), {}
 
-    def step(self, action):  #
+    def step(self, action):
+        #
         # print('step {}/{}'.format(self.current_step + 1, self.done_step))
 
         # 动作离散化/加规则
@@ -165,7 +168,7 @@ class QFLEnv(gymnasium.Env):
                         quant[i] = 1
                         bd_update_flag = True
             if bd_update_flag:
-                bd = bd / np.sum(bd)
+                bd = bd / np.sum(bd) if np.sum(bd) > 0 else [0]*self.cars
         #  这里已经做好了用户选择了
         self.slct = [1 if num > 0 else 0 for num in bd]
         self.qe_per_car = 1/ np.power(np.power(2, quant) - 1, 2)
@@ -182,13 +185,13 @@ class QFLEnv(gymnasium.Env):
             print('quant{}'.format(list(quant)))
             print("slct:{}".format(self.slct))
 
-
         # 计算两个目标和约束
         cons_per_round = np.sum(self.slct / np.power(np.power(2, quant) - 1, 2))
         self.cons_ratio_total = cons_per_round / self.qe  # 为了放入观察空间里
         self.cons_ratio_per_round = self.cons_ratio_total * self.done_step  # 为了放入观察空间里
         obj1_per_round = np.log(1+sum(self.slct)) * self.zeta ** (self.current_step)
         obj2_per_round = self.latency_itr
+        # print(obj1_per_round,obj2_per_round)
         self.obj1.append(obj1_per_round)
         self.obj2.append(obj2_per_round)
         self.cons.append(cons_per_round)
@@ -199,7 +202,7 @@ class QFLEnv(gymnasium.Env):
         obj1_min = np.sum([np.log(1+1) * self.zeta ** i for i in range(self.current_step+1)])
         obj1_max =  np.sum([np.log(10+1) * self.zeta ** i for i in range(self.current_step+1)])
         obj2_min = np.sum([self.obj2_min[i] for i in range(self.current_step + 1)])
-        obj2_max = self.latency_limit * (self.current_step+1)
+        obj2_max = self.obj2_max * (self.current_step+1)
         # obj2_max = np.sum([self.obj2_max[i] for i in range(self.current_step + 1)])
 
         # check_termination
@@ -210,6 +213,11 @@ class QFLEnv(gymnasium.Env):
 
         reward, done_flag2 = self.get_reward(bd, quant, obj1_min, obj1_max, obj2_min, obj2_max)
         done = done_flag1 or done_flag2
+
+        # 在每个回合结束时执行，记录奖励值
+        if self.obj_file and self.current_episode > (self.timesteps // 50-10):
+            print(self.current_episode)
+            self.f.write(str(obj1_per_round) + "\t" + str(obj2_per_round) + "\n")
         return obs, reward, done, False, {}
 
     def get_reward(self, bd, quant, obj1_min, obj1_max, obj2_min, obj2_max):
@@ -230,7 +238,7 @@ class QFLEnv(gymnasium.Env):
         accumulated_obj1 = self.obj1[-1] # np.sum(np.array(self.obj1))
         accumulated_obj2 = self.obj2[-1] # np.sum(np.array(self.obj2))
         obj1 = (accumulated_obj1 - np.log(1+1) * self.zeta ** current) / (np.log(10+1) * self.zeta ** current - np.log(1+1) * self.zeta ** current) # normlize
-        obj2 = (accumulated_obj2 - self.obj2_min[current]) / ( self.latency_limit - self.obj2_min[current])  # normlize
+        obj2 = (accumulated_obj2 - self.obj2_min[current]) / ( self.obj2_max - self.obj2_min[current])  # normlize
         reward = self.weight_lambda * obj1
         reward -= (1 - self.weight_lambda) * obj2
 
@@ -261,17 +269,12 @@ class QFLEnv(gymnasium.Env):
             # if qe_calculate > qe_current:
             #     reward -= 10
             # print('constraint ratio:{},reward:{}, quant:{}'.format(qe_calculate/qe_current,reward,quant))
-            # 在每个回合结束时执行，记录奖励值
-            # if self.obj_file:
-            #     self.f.write(str(accumulated_obj1) + "\t" + str(accumulated_obj2) + "\t" + str(reward) + "\t" +
-            #                  str(obj1) + "\t" + str(obj2) +
-            #                  "\t" + str(self.slct) + "\t" + str(bd.tolist()) + "\t" + str(quant.tolist()) + "\n")
         return reward, done
 
     def get_last_dynamic_obs(self):
         return ([i / (self.radius) -1 for i in self.travel_dis] + [2* (i -self.rsu_distance_min) / (self.rsu_distance_max-self.rsu_distance_min) -1 for i in self.rsu_dis]+
                 [2*(i/self.qe_bit_per_car-self.qe_per_car_ratio_min)/(self.qe_per_car_ratio_max-self.qe_per_car_ratio_min)-1  for i in self.qe_per_car] +[2*i-1 for i in self.slct]+
-                [2*self.latency_itr/self.latency_limit-1]+ [2*self.cons_ratio_per_round-1])
+                [2*self.latency_itr/self.obj2_max-1]+ [2*self.cons_ratio_per_round-1])
     def render(self, mode='human'):
         pass
 
@@ -286,6 +289,6 @@ class QFLEnv(gymnasium.Env):
         """
         observation = ([i / (self.radius) -1 for i in self.travel_dis] + [2*(i -self.rsu_distance_min) / (self.rsu_distance_max-self.rsu_distance_min) -1 for i in self.rsu_dis]+
                        [2*(i/self.qe_bit_per_car-self.qe_per_car_ratio_min)/(self.qe_per_car_ratio_max-self.qe_per_car_ratio_min)-1 for i in self.qe_per_car]+[2*i-1 for i in self.slct]+
-                       [2*self.latency_itr/self.latency_limit-1]+ [2*self.cons_ratio_per_round-1]+
+                       [2*self.latency_itr/self.obj2_max-1]+ [2*self.cons_ratio_per_round-1]+
                        self.last_dynamic_obs)
         return observation

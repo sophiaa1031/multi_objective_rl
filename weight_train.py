@@ -55,16 +55,17 @@ os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
 # baselines = ['ppo','rb','rq']
 # lr = [0.01, 0.0001]
 # bs = [64,128,256]
+# args.timesteps = 2000
 
 for i in range(1):  # i可以是weight，velocity，lmax
     # j = i // 3
     # k = i % 3
     # args.baseline = baselines[j]
     # args.lr = lr[k]
-    print(args.baseline,args.lr)
+    print(args.baseline,args.lmax)
     env = QFL_Env_clientnumber_latency.QFLEnv(args,weight_lambda=0.5,
-                                              obj_file=log_pf+"/baseline_{}_lr_{}.txt".format(args.baseline,args.lr),lmax=0.35)
-    monitor_path = log_dir+"{}: lr {}".format(args.baseline,args.lr)
+                                              obj_file=log_pf+"/{}: lmax {}.txt".format(args.baseline,args.lmax))
+    monitor_path = log_dir+"{}: lmax {}".format(args.baseline,args.lmax)
     env = Monitor(env, monitor_path)
     policy_kwargs = dict(activation_fn=torch.nn.ReLU,
                          net_arch=dict(pi=[128,64], vf=[128,64]))
@@ -81,9 +82,3 @@ for i in range(1):  # i可以是weight，velocity，lmax
     training_time = end_time - start_time
     save_result(training_time,log_time)
     model.save('ppo_saved_weight')
-
-# 画图
-# plot_time(log_time)  # 多目标的训练时间
-# plot_pf_original(log_pf, file_pf)  # 多目标的pareto面
-# multi_reward(reward_path)
-# multi_reward_monitor()

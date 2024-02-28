@@ -7,6 +7,7 @@ import json
 import pandas
 import math
 import ast  # 用于解析字符串中的列表
+import re
 
 log_dir = "log_reward_weight/"
 log_time = 'training_time(s).txt'
@@ -20,6 +21,9 @@ path4 = 'paper/obj1_obj2_lmax/0.2.txt'
 path5 = 'paper/obj1_obj2_qe/06_8.txt'
 reward_path = path1
 
+"""
+    辅助函数
+"""
 def moving_average(values, window):
     """
     Smooth values by doing a moving average
@@ -30,7 +34,6 @@ def moving_average(values, window):
     weights = np.repeat(1.0, window) / window
     return np.convolve(values, weights, "valid")
 
-
 def clear_file_contents(file_path):
     try:
         with open(file_path, 'w') as file:
@@ -38,70 +41,16 @@ def clear_file_contents(file_path):
     except Exception as e:
         print(f"Error: {e}")
 
+def save_reward(path, data):
+    try:
+        with open(path, 'w') as file:
+            np.savetxt(file, data)
+    except Exception as e:
+        print(f"保存数据到文件时出现错误：{e}")
 
-def plot_results(log_folder, title="Learning Curve"):
-    """
-    plot the results
-
-    :param log_folder: (str) the save location of the results to plot
-    :param title: (str) the title of the task to plot
-    """
-    x, y = ts2xy(load_results(log_folder), "timesteps")
-    y = moving_average(y, window=50)
-    # Truncate x
-    x = x[len(x) - len(y):]
-    print(x.shape)
-    print(y.shape)
-
-    fig = plt.figure(title)
-    plt.plot(x, y)
-    plt.xlabel("Episode")
-    plt.ylabel("Accumulated reward")
-    plt.title(title + " Smoothed")
-    plt.grid(True, linestyle='--', linewidth=0.5)
-    plt.savefig("Fig conver", dpi=600)
-    plt.show()
-    with open('reward.txt', 'w') as f:
-        for reward in y:
-            f.write(str(reward) + '\n')
-
-    # 计算平均值和标准差
-    mean_value = np.mean(y)
-    std_value = np.std(y)
-    # 输出结果
-    print("平均值：", mean_value)
-    print("标准差：", std_value)
-
-
-# plot_results(log_dir)
-# 通过使用 'load_results' 函数加载训练结果
-
-def plot_reward():
-    results = load_results(".")  # load_results("./log_reward_weight/")
-    # 绘制收敛图
-    x, y = ts2xy(results, 'timesteps')
-    y = moving_average(y, window=10)
-    x = x[len(x) - len(y):]
-    plt.plot(x, y, label='TD3')
-    # plt.ylim(-200,0)
-    plt.xlabel('Timesteps')
-    plt.ylabel('Rewards')
-    plt.title('TD3 Training Progress')
-    plt.legend()
-    plt.show()
-
-
-def plot_time(path):
-    # 读取文本文件中的数据
-    f = open(path, 'r')
-    data = f.read().split(',')
-    plt.bar(range(len(data[:-1])), list(map(float, data[:-1])))
-    # plt.title('Data Plot')
-    plt.xlabel('Subproblem index')
-    plt.ylabel('Training time (s)')
-    plt.show()
-
-
+"""
+    中间处理函数
+"""
 def save_pf(dir_path, path): # 存入已经是收敛后的10个数中的平均数
     clear_file_contents(path)
     file_name = os.listdir(dir_path)
@@ -142,6 +91,64 @@ def save_pf(dir_path, path): # 存入已经是收敛后的10个数中的平均�
         for item in avg_value:
             f.write("{:.3f}\t".format(item))
         f.write("\n")
+
+def save_reward_obj12(reward_path):
+    results, monitor_files = load_results_sorted("./log_reward_weight/")
+    for i, df in enumerate(results):
+        x, y = ts2xy(df, 'timesteps')
+        obj = np.array([])
+        with open(os.path.join('pareto_front/', df), 'r') as f:
+            for line in f.readlines():
+                data = line.replace('\n', '').split('\t')[2]
+                obj1 = line.replace('\n', '').split('\t')[0]
+                obj2 = line.replace('\n', '').split('\t')[1]
+                data = float(data)
+                obj1 = float(obj1)
+                obj2 = float(obj2)
+                y = np.append(y, data)
+                obj = np.append(obj, [obj1,obj2])
+        save_data = obj.reshape(-1, 2)  # 存obj1，obj2
+        # save_data = y  # 存reward
+        save_reward(reward_path,save_data)
+
+def save_reward_mean(path): # 存入已经是收敛后的10个数中的平均数
+    results, monitor_files = load_results_sorted(path)
+    obj_records = []
+    for i, df in enumerate(results):
+        x, y = ts2xy(df, 'timesteps')
+        last_10_lines = y[-50:]  # 获取最后10行
+        avg_value = np.mean(last_10_lines)
+        obj_records.append(str(monitor_files[i])+', '+str(avg_value))  # 添加平均值到列表
+
+    f = open('paper2/obj1_obj2_lmax.txt', 'w')
+    for avg_value in obj_records:
+        f.write("{}\n".format(avg_value))
+"""
+    画图代码
+"""
+def plot_reward():
+    results = load_results(".")  # load_results("./log_reward_weight/")
+    # 绘制收敛图
+    x, y = ts2xy(results, 'timesteps')
+    y = moving_average(y, window=10)
+    x = x[len(x) - len(y):]
+    plt.plot(x, y, label='TD3')
+    # plt.ylim(-200,0)
+    plt.xlabel('Timesteps')
+    plt.ylabel('Rewards')
+    plt.title('TD3 Training Progress')
+    plt.legend()
+    plt.show()
+
+def plot_time(path):
+    # 读取文本文件中的数据
+    f = open(path, 'r')
+    data = f.read().split(',')
+    plt.bar(range(len(data[:-1])), list(map(float, data[:-1])))
+    # plt.title('Data Plot')
+    plt.xlabel('Subproblem index')
+    plt.ylabel('Training time (s)')
+    plt.show()
 
 def plot_pf(dir_path, path):
     save_pf(dir_path, path)
@@ -190,15 +197,7 @@ def plot_pf_original(dir_path, path):
     plt.title('Pareto Front Original')
     plt.show()
 
-
-def save_reward(path, data):
-    try:
-        with open(path, 'w') as file:
-            np.savetxt(file, data)
-    except Exception as e:
-        print(f"保存数据到文件时出现错误：{e}")
-
-def multi_reward(reward_path):
+def multi_reward():
     results = os.listdir('pareto_front/')
     sorted_results = sorted(results, key=str)
     num_rows = math.ceil(len(sorted_results) / 3)
@@ -206,20 +205,11 @@ def multi_reward(reward_path):
     fig, axes = plt.subplots(num_rows, num_cols, figsize=(10, 6))
     for i, df in enumerate(sorted_results):
         y = np.array([])
-        obj = np.array([])
         with open(os.path.join('pareto_front/', df), 'r') as f:
             for line in f.readlines():
                 data = line.replace('\n', '').split('\t')[2]
-                obj1 = line.replace('\n', '').split('\t')[0]
-                obj2 = line.replace('\n', '').split('\t')[1]
                 data = float(data)
-                obj1 = float(obj1)
-                obj2 = float(obj2)
                 y = np.append(y, data)
-                obj = np.append(obj, [obj1,obj2])
-        # save_data = obj.reshape(-1, 2)  # 存obj1，obj2
-        save_data = y  # 存reward
-        # save_reward(reward_path,save_data)
         x = np.arange(1, len(y)+1)
         row = i // num_cols
         col = i % num_cols
@@ -230,10 +220,8 @@ def multi_reward(reward_path):
         ax.set_xlabel('Episode')
         ax.set_ylabel('Rewards')
         ax.set_title(df)
-        # ax.legend()
     plt.tight_layout()
     plt.show()
-
 
 def load_results_sorted(path: str):
     """
@@ -262,10 +250,9 @@ def load_results_sorted(path: str):
         data_frame["t"] -= min(header["t_start"] for header in headers)
     return data_frames, monitor_files_sorted
 
-
 def multi_reward_monitor():
     # 绘制收敛图
-    results, monitor_files = load_results_sorted("./log_reward_weight/")
+    results, monitor_files = load_results_sorted("./log_reward_weight") # log_reward_weight
     num_rows = math.ceil(len(results) / 3)
     num_cols = 3
     fig, axes = plt.subplots(num_rows, num_cols, figsize=(10, 6))
@@ -317,10 +304,8 @@ def plot_reward_diff_setting():
     plt.grid(True)  # 显示网格
     plt.show()  # 显示图表
 
-
-
 def plot_obj1_obj2_reward():
-    folder_path = 'paper/obj1_obj2_lmax'
+    folder_path = 'paper2/obj1_obj2_lmax'
     # 创建一个新的图形窗口，并设置2个子图
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
     for filename in os.listdir(folder_path):
@@ -379,8 +364,6 @@ def plot_obj1_obj2_dot():
     # 显示图表
     plt.show()
 
-import os
-
 def calculate_and_save_average(input_folder):
     for filename in os.listdir(input_folder):
         # 拼接文件的完整路径
@@ -408,11 +391,6 @@ def calculate_and_save_average(input_folder):
 
     print("平均值已保存到对应的文件中")
 
-
-import matplotlib.pyplot as plt
-import numpy as np
-
-
 def plot_obj_FLround(array1, array2, array3):
 
     # 创建x轴，使用一个数组的长度作为x轴
@@ -438,6 +416,42 @@ def plot_obj_FLround(array1, array2, array3):
     # 显示图表
     plt.show()
 
+
+# 实验图1
+def multi_reward_optimal():
+    folder_path = "./paper2/reward_nohup/overall/monitor/"
+    baselines = ['ppo', 'rb', 'rq']
+    color = ['blue', 'Orange', 'Green']
+    legend = ['DRL-VQFL', "RBA", 'RQA']
+    fig, ax = plt.subplots(figsize=(8, 6))
+    for i in range(3):
+        path = folder_path + str(baselines[i]) + '/'
+        results, monitor_files = load_results_sorted(
+            path)  # ./paper2/reward/monitor log_reward_weight paper2/reward_nohup/monitor paper2/reward_nohup/lr/monitor
+        all_rewards = []
+        for j, df in enumerate(results):
+            x, y = ts2xy(df, 'timesteps')
+            # x = x / 50
+            y = moving_average(y, window=20)
+            x = x[len(x) - len(y):] / 50
+            all_rewards.append(y)
+            mean_rewards = np.mean(all_rewards, axis=0)
+            std_dev = np.std(all_rewards, axis=0)
+            upper_bound = mean_rewards + std_dev
+            lower_bound = mean_rewards - std_dev
+        ax.plot(x, mean_rewards, label=legend[i], color=color[i])  # 使用文件名作为标签 split(".")[0]
+        plt.fill_between(x, upper_bound, lower_bound, color=color[i], alpha=0.3)
+    ax.set_xlabel('Episode', fontsize=16)
+    ax.set_ylabel('Reward', fontsize=16)
+    ax.tick_params(axis='x', labelsize=12)
+    ax.tick_params(axis='y', labelsize=12)
+    ax.legend(loc='lower left', bbox_to_anchor=(0.7, 0.01), shadow=True, ncol=1, fontsize=14)  # 0.085,0.01 0.1,0.01
+    plt.subplots_adjust(bottom=0.25)
+    plt.tight_layout()
+    plt.grid(True)
+    # plt.savefig("./paper2/fig/expr3", dpi=600)
+    plt.show()
+
 # 实验图2，3
 def multi_reward_monitor_inonefigure():
     path = "./paper2/reward_nohup/lr/monitor"
@@ -456,57 +470,206 @@ def multi_reward_monitor_inonefigure():
     plt.subplots_adjust(bottom=0.25)
     plt.tight_layout()
     plt.grid(True)
-    plt.savefig("./paper2/fig/expr1", dpi=600)
+    # plt.savefig("./paper2/fig/expr1", dpi=600)
     plt.show()
 
-def multi_reward_optimal():
-    folder_path = "./paper2/reward_nohup/overall/monitor/"
-    baselines = ['ppo','rb','rq']
-    color=['blue','Orange','Green']
-    legend = ['DRL-VQFL',"RBA",'RQA']
-    fig, ax = plt.subplots(figsize=(8, 6))
-    for i in range(3):
-        path = folder_path+str(baselines[i])+'/'
-        results, monitor_files = load_results_sorted(path) # ./paper2/reward/monitor log_reward_weight paper2/reward_nohup/monitor paper2/reward_nohup/lr/monitor
-        all_rewards = []
-        for j, df in enumerate(results):
-            x, y = ts2xy(df, 'timesteps')
-            # x = x / 50
-            y = moving_average(y, window=20)
-            x = x[len(x) - len(y):]/50
-            all_rewards.append(y)
-            mean_rewards = np.mean(all_rewards, axis=0)
-            std_dev = np.std(all_rewards, axis=0)
-            upper_bound = mean_rewards + std_dev
-            lower_bound = mean_rewards - std_dev
-        ax.plot(x, mean_rewards, label=legend[i], color=color[i])  # 使用文件名作为标签 split(".")[0]
-        plt.fill_between(x, upper_bound, lower_bound, color=color[i], alpha=0.3)
-    ax.set_xlabel('Episode', fontsize=16)
+#实验图4
+def plot_reward_lmax():
+    # 定义三个空列表，用于存储提取的数据
+    list1 = []
+    list2 = []
+    list3 = []
+
+    # 打开文件进行读取
+    with open('paper2/obj1_obj2_lmax.txt', 'r') as file:
+        # 逐行读取文件内容
+        for line in file:
+            # 将每行数据按空格进行分割
+            parts = line.split()
+            # 提取第一部分的数据，即./log_reward_weight/ppo/rb/rq
+            list1.append(parts[0].split('/')[-1].split(':')[0])
+            # 提取第二部分的数据，即lmax 后面.monitor前面的string
+            list2.append(float(parts[2].split('.monitor')[0]))
+            # 提取第三部分的数据，并转化为float，即csv, 后面的string
+            list3.append(float(parts[3]))
+    grouped_data = {}
+    for i in range(len(list1)):
+        if list1[i] not in grouped_data:
+            grouped_data[list1[i]] = []
+        grouped_data[list1[i]].append((list2[i], list3[i]))
+    for key in grouped_data:
+        grouped_data[key].sort(key=lambda tup: tup[0])
+
+    fig, ax = plt.subplots(figsize=(8, 6))  # 创建一个新的图形窗口
+    markers = ['o','x', '^']  # 不同的标记
+    # 画出曲线
+    for index, (key, value) in enumerate(grouped_data.items()):
+        if key == 'ppo':
+            legend = 'DRL-VQFL'
+        elif key == 'rb':
+            legend = 'RBA'
+        elif key == 'rq':
+            legend = 'RQA'
+        x_data = [item[0]+0.25 for item in value]
+        y_data = [item[1] for item in value]
+        plt.plot(x_data, y_data, label=legend,marker=markers[index],markersize=10,markerfacecolor='none')
+
+    # 添加图例、横纵坐标标签
+    ax.legend()
+    ax.set_xlabel('The latency tolerance $T^{max}$ (s)', fontsize=16)
     ax.set_ylabel('Reward', fontsize=16)
     ax.tick_params(axis='x', labelsize=12)
     ax.tick_params(axis='y', labelsize=12)
-    ax.legend(loc='lower left', bbox_to_anchor=(0.7,0.01), shadow=True, ncol=1, fontsize=14) #0.085,0.01 0.1,0.01
+    ax.legend(loc='lower left', bbox_to_anchor=(0.7, 0.4), shadow=True, ncol=1, fontsize=14)  # 0.085,0.01 0.1,0.01
     plt.subplots_adjust(bottom=0.25)
     plt.tight_layout()
     plt.grid(True)
-    # plt.savefig("./paper2/fig/expr3", dpi=600)
+    plt.savefig("./paper2/fig/expr5", dpi=600)
     plt.show()
 
+# 实验图5
+def plot_obj1_diff_qe(folder):
+    fig, ax = plt.subplots(figsize=(8, 6))
+    # subfolders = [f for f in os.listdir(folder) if os.path.isdir(os.path.join(folder, f))]
+    subfolders = ['loose_ppo', 'tight_ppo', 'loose_rb', 'loose_rq']
+    markers = ['o', 's', 'd', '^', 'x', '+', '*']  # 不同的标记
+    for i, subfolder in enumerate(subfolders, start=1):
+        if subfolder == 'tight_ppo':
+            legend = 'DRL-VQFL (tight)'
+        elif subfolder == 'loose_rb':
+            legend = 'RBA'
+        elif subfolder == 'loose_rq':
+            legend = 'RQA'
+        elif subfolder == 'loose_ppo':
+            legend = 'DRL-VQFL (loose)'
+        folder_path = os.path.join(folder, subfolder)
+        filenames = sorted(os.listdir(folder_path), key=lambda x: float(re.findall(r"[-+]?\d*\.\d+|\d+", x)[0]))
+        x = []
+        y = []
+        for filename in filenames:
+            filepath = os.path.join(folder_path, filename)
+            if os.path.isfile(filepath):
+                with open(filepath, 'r') as file:
+                    lines = [float(line.split()[0]) for line in file]
+                    total = sum(lines) * 50 / len(lines) if lines else 0  # Calculate average if lines exist, else set to 0
+                    x.append(float(filename.split(' ')[2].split('.txt')[0])+0.25)  # Assuming filename is like '1.txt'
+                    y.append(total)
+        ax.plot(x, y, label=legend,marker=markers[i], markersize=10,markerfacecolor='none')
+    ax.set_xlabel('The latency tolerance $T^{max}$ (s)', fontsize=16)
+    ax.set_ylabel('The accumulated number of selected vehicles', fontsize=16) # Latency (s) The accumulated metric of selected vehicles
+    ax.tick_params(axis='x', labelsize=12)
+    ax.tick_params(axis='y', labelsize=12)
+    ax.legend(ncol=1, fontsize=14) #0.092,0.01 0.15,0.01
+    plt.grid(True)
+    plt.savefig("./paper2/fig/expr6", dpi=600)
+    plt.show()
+
+# #实验图6
+def plot_obj_over_step(folder):
+    # fig, ax2 = plt.subplots(figsize=(8, 6))
+    fig, (ax1, ax2,ax3) = plt.subplots(1, 3, figsize=(24, 6))
+    markers = ['o', 's', 'd', '^', 'x', '+', '*']  # 不同的标记
+    filenames = sorted(os.listdir(folder), key=lambda x: float(re.findall(r"[-+]?\d*\.\d+|\d+", x)[0]))
+    for idx, filename in enumerate(filenames):
+        filepath = os.path.join(folder, filename)
+        if os.path.isfile(filepath):
+            list1 = []
+            list2 = []
+        with open(filepath, 'r') as file:
+            for line in file:
+                values = line.split()
+                list1.append(float(values[0]))
+                list2.append(float(values[1]))
+        list3 = []
+        list4 = []
+        group_size = 50
+        for i in range(0, len(list1), group_size):
+            group1 = list1[i:i + group_size]
+            group2 = list2[i:i + group_size]
+            list3.append(group1)
+            list4.append(group2)
+        list3_average = [sum(item)/len(item) for item in zip(*list3)]
+        list4_average = [sum(item)/len(item) for item in zip(*list4)]
+        list5 = [x - y for x, y in zip(list3_average, list4_average)]
+        ax1.plot(range(1, len(list4_average) + 1), list3_average, label='$T^{max}=$'+str(float(filename.split(' ')[2].split('.txt')[0])+0.25), marker=markers[idx % len(markers)],  markevery=5, linestyle='-',markersize=10,markerfacecolor='none')
+        ax2.plot(range(1, len(list4_average) + 1), list4_average, label=filename, marker=markers[idx % len(markers)],  markevery=5, linestyle='-',markersize=10,markerfacecolor='none')
+        ax3.plot(range(1, len(list4_average) + 1), list5, label='$T^{max}=$'+str(float(filename.split(' ')[2].split('.txt')[0])+0.25), marker=markers[idx % len(markers)],  markevery=5, linestyle='-',markersize=10,markerfacecolor='none')
+    # 添加标题和标签
+    ax1.set_title('Average Values in list3 for Each File', fontsize=16)
+    ax1.set_xlabel('Index', fontsize=12)
+    ax1.set_ylabel('Average Value', fontsize=12)
+    ax1.tick_params(axis='x', labelsize=10)
+    ax1.tick_params(axis='y', labelsize=10)
+    plt.grid(True)
+
+    ax2.set_xlabel('FL iteration number', fontsize=16)
+    ax2.set_ylabel('Latency (s)', fontsize=16)
+    ax2.tick_params(axis='x', labelsize=12)
+    ax2.tick_params(axis='y', labelsize=12)
+    ax2.legend(ncol=2, fontsize=13) #0.092,0.01 0.15,0.01
+    # ax2.legend(loc='upper right', bbox_to_anchor=(0.5,0), shadow=True, ncol=3, fontsize=11) #0.092,0.01 0.15,0.01
+    plt.grid(True)
+
+    ax3.set_title('Average Values in list4 for Each File', fontsize=16)
+    ax3.set_xlabel('Index', fontsize=12)
+    ax3.set_ylabel('Average Value', fontsize=12)
+    ax3.tick_params(axis='x', labelsize=10)
+    ax3.tick_params(axis='y', labelsize=10)
+    plt.grid(True)
+
+    # plt.savefig("./paper2/fig/expr7", dpi=600)
+    plt.show()
+
+def plot_obj2_over_step(folder):
+    fig, ax = plt.subplots(figsize=(8, 6))
+    markers = ['o', 's', 'd', '^', 'x', '+', '*']  # 不同的标记
+    filenames = sorted(os.listdir(folder), key=lambda x: float(re.findall(r"[-+]?\d*\.\d+|\d+", x)[0]))
+    for idx, filename in enumerate(filenames):
+        filepath = os.path.join(folder, filename)
+        if os.path.isfile(filepath):
+            list2 = []
+        with open(filepath, 'r') as file:
+            for line in file:
+                values = line.split()
+                list2.append(float(values[1])) #values[0]
+        list4 = []
+        group_size = 50
+        for i in range(0, len(list2), group_size):
+            group2 = list2[i:i + group_size]
+            list4.append(group2)
+        list4_average = [sum(item)/len(item) for item in zip(*list4)]
+        cumulative_sum = []
+        current_sum = 0
+        for num in list4_average:
+            current_sum += num
+            cumulative_sum.append(current_sum)
+        cumulative_sum.insert(0, 0)
+        ax.plot(cumulative_sum, label='$T^{max}=$'+str(float(filename.split(' ')[2].split('.txt')[0])+0.25), marker=markers[idx % len(markers)], markevery=5, linestyle='-',markersize=10,markerfacecolor='none')
+
+    ax.set_xlabel('FL iteration number', fontsize=16)
+    ax.set_ylabel('Latency (s)', fontsize=16) # Latency (s) The accumulated metric of selected vehicles
+    ax.tick_params(axis='x', labelsize=12)
+    ax.tick_params(axis='y', labelsize=12)
+    ax.legend(ncol=1, fontsize=14) #0.092,0.01 0.15,0.01
+    plt.grid(True)
+    # plt.savefig("./paper2/fig/expr7", dpi=600)
+    plt.show()
 
 # 画那些图在这里决定
 if __name__ == "__main__":
     # plot_reward()  # test里一个reward
+
     # plot_time(log_time)  # 多目标的训练时间
     # plot_pf(log_pf, file_pf)  # 多目标的pareto面
     # plot_pf_original(log_pf, file_pf)  # 多目标的pareto面
-    # multi_reward(reward_path)  # 多目标的reward收敛图
+    # multi_reward()  # 多目标的reward收敛图
     # multi_reward_monitor() # 多目标的reward封装代码收敛图
 
     # plot_reward_diff_setting()
 
-
-    # plot_obj1_obj2_reward()
+    # save_reward_obj12()
     # plot_obj1_obj2_dot()
+    # plot_obj1_obj2_reward()
 
     # 调用函数并传递文件夹路径和输出文件名
     # calculate_and_save_average('paper/reward_method')
@@ -520,5 +683,15 @@ if __name__ == "__main__":
     # plot_obj_FLround(array1, array2, array3)
 
     #实验画图
+    # 图23
     # multi_reward_monitor_inonefigure()
-    multi_reward_optimal()
+    # 图1
+    # multi_reward_optimal()
+    # 图4
+    # save_reward_mean("./paper2/reward_nohup/lmax/final_data") #"./log_reward_weight/"
+    # plot_reward_lmax()
+    # 图5
+    plot_obj1_diff_qe('paper2/obj_under_qe/')
+    # 图6
+    # plot_obj_over_step('./pareto_front') #pareto_front paper2/obj_under_qe/loose/
+    # plot_obj2_over_step('./paper2/obj_under_qe/tight_ppo/') #pareto_front    paper2/obj_under_qe/loose_ppo/
